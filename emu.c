@@ -10,9 +10,10 @@
 #include "htab.h"
 
 /* Enable or disable tracer */
-#define trace_print(x, ...) fprintf(stderr, x, __VA_ARGS__)
-// #define trace_print(x, ...)
+// #define trace_print(x, ...) fprintf(stderr, x, __VA_ARGS__)
+#define trace_print(x, ...)
 
+#define INSN_OP(insn) (insn >> 12 & 0xf)
 #define INSN_RD(insn) (insn >> 8 & 0xf)
 #define INSN_RA(insn) (insn >> 4 & 0xf)
 #define INSN_RB(insn) (insn & 0xf)
@@ -23,174 +24,185 @@
 #define ccl 12
 #define ccL 11
 
-#define EQU_BIT(x, bit, val) \
+#define SET_BIT(x, bit, val) \
 	if (val) { x |= (1 << bit); } else { x &= ~(1 << bit); }
 
-static void dumpregs(uint16_t *regs)
-{
-	size_t i;
+/*
+ * Emulator context
+ */
 
-	for (i = 0; i < 16; ++i) {
-		printf("R%ld:  %04x\n", i, regs[i]);
-	}
+#define REG_CNT 0x10     /* 16 */
+#define RAM_SIZE 0x10000 /* 16K words */
+
+struct s16emu {
+	/* Decode registers */
+	uint16_t pc, ir, adr;
+	/* General purpose registers */
+	uint16_t reg[REG_CNT];
+	/* RAM */
+	uint16_t ram[RAM_SIZE];
+};
+
+/*
+ * Traps
+ */
+
+#define TRAP_EXIT  0
+#define TRAP_WRITE 2
+
+static void trap_write(struct s16emu *emu, uint16_t a, uint16_t b)
+{
+	while (b--)
+		printf("%c", (int) emu->ram[a++]);
 }
 
 /*
  * Execute instruction
  */
-void execute(uint16_t *ram, size_t ram_size, htab *symtab)
+void execute(struct s16emu *emu, htab *symtab)
 {
-	/* Decode registers */
-	uint16_t pc, ir, adr;
-	/* ISA registers */
-	uint16_t gregs[0xf];
-
-	size_t i;
-	uint16_t *trapptr;
+	uint8_t op, d, a, b;
+	uint16_t t1, t2;
 
 	char adrbuf[10];
 	char *adrsym;
 
-	/* Reset vector is zero */
-	pc = 0;
-
-	/* Zero ISA registers */
-	bzero(gregs, sizeof(uint16_t) * 0xf);
-
 	for (;;) {
-		trace_print("PC: %04x\t", pc);
+		trace_print("PC: %04x\t", emu->pc);
 
-		ir = ram[pc++];
+		emu->ir = emu->ram[emu->pc++];
 
-		switch (ir & 0xf000) {
-		case 0x0000: /* add */
-			trace_print("add R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
-			gregs[INSN_RD(ir)] = gregs[INSN_RA(ir)] + gregs[INSN_RB(ir)];
+		op = INSN_OP(emu->ir);
+		d = INSN_RD(emu->ir);
+		a = INSN_RA(emu->ir);
+		b = INSN_RB(emu->ir);
+
+		switch (op) {
+		case 0: /* add */
+			trace_print("add R%d,R%d,R%d\n", d, a, b);
+			t1 = emu->reg[a] + emu->reg[b];
+			emu->reg[d] = t1;
 			break;
-		case 0x1000: /* sub */
-			trace_print("sub R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
-			gregs[INSN_RD(ir)] = gregs[INSN_RA(ir)] - gregs[INSN_RB(ir)];
+		case 1: /* sub */
+			trace_print("sub R%d,R%d,R%d\n", d, a, b);
+			t1 = emu->reg[a] + ~emu->reg[b] + 1;
+			emu->reg[d] = t1;
 			break;
-		case 0x2000: /* mul */
-			trace_print("mul R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
-			gregs[INSN_RD(ir)] = gregs[INSN_RA(ir)] * gregs[INSN_RB(ir)];
+		case 2: /* mul */
+			trace_print("mul R%d,R%d,R%d\n", d, a, b);
+			t1 = (int16_t) emu->reg[a] * (int16_t) emu->reg[b];
+			emu->reg[d] = t1;
 			break;
-		case 0x3000: /* div */
-			trace_print("div R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
-			if (INSN_RD(ir) != 0xf) {
-				gregs[INSN_RD(ir)] = gregs[INSN_RA(ir)] / gregs[INSN_RB(ir)];
-				gregs[0xf] = gregs[INSN_RA(ir)] % gregs[INSN_RB(ir)];
+		case 3: /* div */
+			trace_print("div R%d,R%d,R%d\n", d, a, b);
+			t1 = emu->reg[a] / emu->reg[b];
+			t2 = emu->reg[a] % emu->reg[b];
+			if (d != 15) {
+				emu->reg[d] = t1;
+				emu->reg[15] = t2;
 			} else {
-				gregs[0xf] = gregs[INSN_RA(ir)] / gregs[INSN_RB(ir)];
+				emu->reg[15] = t1;
 			}
 			break;
-		case 0x4000: /* cmp */
-			trace_print("cmp R%d,R%d\n", INSN_RA(ir), INSN_RB(ir));
-			EQU_BIT(gregs[0xf], ccE, gregs[INSN_RA(ir)] == gregs[INSN_RB(ir)]);
-			EQU_BIT(gregs[0xf], ccG, gregs[INSN_RA(ir)] > gregs[INSN_RB(ir)]);
-			EQU_BIT(gregs[0xf], ccL, gregs[INSN_RA(ir)] < gregs[INSN_RB(ir)]);
+		case 4: /* cmp */
+			trace_print("cmp R%d,R%d\n", a, b);
+			SET_BIT(emu->reg[15], ccE, emu->reg[a] == emu->reg[b]);
+			SET_BIT(emu->reg[15], ccG, emu->reg[a] > emu->reg[b]);
+			SET_BIT(emu->reg[15], ccL, emu->reg[a] < emu->reg[b]);
 
 			/* FIXME: this assumes two's compliment representation by host */
-			EQU_BIT(gregs[0xf], ccg, (int16_t) gregs[INSN_RA(ir)] >
-				(int16_t) gregs[INSN_RB(ir)]);
-			EQU_BIT(gregs[0xf], ccl, (int16_t) gregs[INSN_RA(ir)] <
-				(int16_t) gregs[INSN_RB(ir)]);
+			SET_BIT(emu->reg[15], ccg, (int16_t) emu->reg[a] >
+				(int16_t) emu->reg[b]);
+			SET_BIT(emu->reg[15], ccl, (int16_t) emu->reg[a] <
+				(int16_t) emu->reg[b]);
 			break;
-		case 0x5000: /* cmplt */
-			trace_print("cmplt R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
-			gregs[0xf] = gregs[INSN_RA(ir)] < gregs[INSN_RB(ir)];
+		case 5: /* cmplt */
+			trace_print("cmplt R%d,R%d,R%d\n", d, a, b);
+			emu->reg[15] = emu->reg[a] < emu->reg[b];
 			break;
-		case 0x6000: /* cmpeq */
-			trace_print("cmpeq R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
-			gregs[0xf] = gregs[INSN_RA(ir)] == gregs[INSN_RB(ir)];
+		case 6: /* cmpeq */
+			trace_print("cmpeq R%d,R%d,R%d\n", d, a, b);
+			emu->reg[15] = emu->reg[a] == emu->reg[b];
 			break;
-		case 0x7000: /* cmpgt */
-			trace_print("cmpgt R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
-			gregs[0xf] = gregs[INSN_RA(ir)] > gregs[INSN_RB(ir)];
+		case 7: /* cmpgt */
+			trace_print("cmpgt R%d,R%d,R%d\n", d, a, b);
+			emu->reg[15] = emu->reg[a] > emu->reg[b];
 			break;
-		case 0xd000: /* trap */
-			trace_print("trap R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
-
-			/* Trap exit */
-			if (!INSN_RD(ir) && !INSN_RA(ir) && !INSN_RB(ir))
+		case 0xd: /* trap */
+			trace_print("trap R%d,R%d,R%d\n", d, a, b);
+			switch (emu->reg[d]) {
+			case TRAP_EXIT:
 				return;
-
-			/* Trap write */
-			if (gregs[INSN_RD(ir)] == 2) {
-				trapptr = ram + gregs[INSN_RA(ir)];
-				for (i = 0; i < gregs[INSN_RB(ir)]; ++i)
-					printf("%c", (int) trapptr[i]);
+			case TRAP_WRITE:
+				trap_write(emu, emu->reg[a], emu->reg[b]);
+				break;
 			}
-
 			break;
-		case 0xf000: /* RX format */
-			adr = ram[pc++];
+		case 0xf: /* RX format */
+			emu->adr = emu->ram[emu->pc++];
 
 			if (symtab)
-				adrsym = htab_get(symtab, adr);
+				adrsym = htab_get(symtab, emu->adr);
 			else
 				adrsym = NULL;
 
 			if (!adrsym) {
-				snprintf(adrbuf, sizeof(adrbuf), "%04x", adr);
+				snprintf(adrbuf, sizeof(adrbuf), "%04x", emu->adr);
 				adrsym = adrbuf;
 			}
 
-			switch (INSN_RB(ir)) {
+			switch (b) {
 			/* NOTE: doc is silent on the issue,
 				but I do iAPX86 style wraparound for address overflows */
 			case 0: /* lea */
-				trace_print("lea R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				gregs[INSN_RD(ir)] = (adr + gregs[INSN_RA(ir)]) % ram_size;
+				trace_print("lea R%d,%s[R%d]\n", d, adrsym, a);
+				emu->reg[d] = (emu->adr + emu->reg[a]) % RAM_SIZE;
 				break;
 
 			case 1: /* load */
-				trace_print("load R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				gregs[INSN_RD(ir)] = ram[(adr + gregs[INSN_RA(ir)]) % ram_size];
+				trace_print("load R%d,%s[R%d]\n", d, adrsym, a);
+				emu->reg[d] = emu->ram[(emu->adr + emu->reg[a]) % RAM_SIZE];
 				break;
 			case 2: /* store */
-				trace_print("store R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				ram[(adr +  gregs[INSN_RA(ir)]) % ram_size] = gregs[INSN_RD(ir)];
+				trace_print("store R%d,%s[R%d]\n", d, adrsym, a);
+				emu->ram[(emu->adr +  emu->reg[a]) % RAM_SIZE] = emu->reg[d];
 				break;
 
 			case 3: /* jump */
-				trace_print("jump R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				pc = (adr +  gregs[INSN_RA(ir)]) % ram_size;
+				trace_print("jump R%d,%s[R%d]\n", d, adrsym, a);
+				emu->pc = (emu->adr +  emu->reg[a]) % RAM_SIZE;
 				break;
 			case 4: /* jumpc0 */
-				trace_print("jumpc0 R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				if (!(gregs[0xf] & (0x8000 >> INSN_RD(ir))))
-					pc = (adr + gregs[INSN_RA(ir)]) % ram_size;
+				trace_print("jumpc0 R%d,%s[R%d]\n", d, adrsym, a);
+				if (!(emu->reg[15] & (0x8000 >> d)))
+					emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
 				break;
 			case 5: /* jumpc1 */
-				trace_print("jumpc1 R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				if (gregs[0xf] & (0x8000 >> INSN_RD(ir)))
-					pc = (adr + gregs[INSN_RA(ir)]) % ram_size;
+				trace_print("jumpc1 R%d,%s[R%d]\n", d, adrsym, a);
+				if (emu->reg[15] & (0x8000 >> d))
+					emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
 				break;
 			case 6: /* jumpf */
-				trace_print("jumpf R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				if (!gregs[INSN_RD(ir)])
-					pc = (adr +  gregs[INSN_RA(ir)]) % ram_size;
+				trace_print("jumpf R%d,%s[R%d]\n", d, adrsym, a);
+				if (!emu->reg[d])
+					emu->pc = (emu->adr +  emu->reg[a]) % RAM_SIZE;
 				break;
 			case 7: /* jumpt */
-				trace_print("jumpt R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				if (gregs[INSN_RD(ir)])
-					pc = (adr + gregs[INSN_RA(ir)]) % ram_size;
+				trace_print("jumpt R%d,%s[R%d]\n", d, adrsym, a);
+				if (emu->reg[d])
+					emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
 				break;
 			case 8: /* jal */
-				trace_print("jal R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				gregs[INSN_RD(ir)] = pc;
-				pc = (adr + gregs[INSN_RA(ir)]) % ram_size;
+				trace_print("jal R%d,%s[R%d]\n", d, adrsym, a);
+				emu->reg[d] = emu->pc;
+				emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
 				break;
 			}
 			break;
 		}
 
 		/* Enforce R0 = 0 */
-		gregs[0] = 0;
-
-		// dumpregs(gregs);
-		// getchar();
+		emu->reg[0] = 0;
 	}
 }
 
@@ -222,7 +234,7 @@ ssize_t load(char *path, uint16_t *ram, size_t ram_size)
 	}
 
 	close(fd);
-	return (ptr - ram) / sizeof(uint16_t);
+	return ptr - ram;
 err:
 	close(fd);
 	return -1;
@@ -309,7 +321,7 @@ err:
 
 int main(int argc, char *argv[])
 {
-	uint16_t *ram;
+	struct s16emu *emu;
 	ssize_t prog_size;
 
 	htab symtab;
@@ -323,22 +335,22 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	ram = calloc(0xffff, sizeof(uint16_t));
-	if (!ram) /* We can't do much if malloc fails */
+	emu = calloc(1, sizeof(struct s16emu));
+	if (!emu) /* We can't do much if malloc fails */
 		abort();
 
-	prog_size = load(argv[1], ram, 0xffff);
+	prog_size = load(argv[1], emu->ram, RAM_SIZE);
 	if (-1 == prog_size) {
-		free(ram);
+		free(emu);
 		return 1;
 	}
 	printf("Loaded %ld word program!\n", prog_size);
 
 	if (argc >= 3) {
-		execute(ram, 0xffff, &symtab);
+		execute(emu, &symtab);
 		htab_del(&symtab, 1);
 	} else {
-		execute(ram, 0xffff, NULL);
+		execute(emu, NULL);
 	}
 
 	return 0;
