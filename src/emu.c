@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -9,9 +10,20 @@
 #include "dynarr.h"
 #include "htab.h"
 
-/* Enable or disable tracer */
-#define trace_print(x, ...) fprintf(stderr, x, __VA_ARGS__)
-// #define trace_print(x, ...)
+#include "internal.h"
+
+static _Bool dotrace = 0;
+
+static void trace_print(char *fmt, ...)
+{
+	va_list ap;
+
+	if (!dotrace)
+		return;
+	va_start(ap, fmt);
+	vprintf(fmt, ap);
+	va_end(ap);
+}
 
 #define INSN_OP(insn) (insn >> 12 & 0xf)
 #define INSN_RD(insn) (insn >> 8 & 0xf)
@@ -26,22 +38,6 @@
 
 #define SET_BIT(x, bit, val) \
 	if (val) { x |= (1 << bit); } else { x &= ~(1 << bit); }
-
-/*
- * Emulator context
- */
-
-#define REG_CNT 0x10     /* 16 */
-#define RAM_SIZE 0x10000 /* 16K words */
-
-struct s16emu {
-	/* Decode registers */
-	uint16_t pc, ir, adr;
-	/* General purpose registers */
-	uint16_t reg[REG_CNT];
-	/* RAM */
-	uint16_t ram[RAM_SIZE];
-};
 
 /*
  * Traps
@@ -156,21 +152,21 @@ void execute(struct s16emu *emu, htab *symtab)
 				but I do iAPX86 style wraparound for address overflows */
 			case 0: /* lea */
 				trace_print("lea R%d,%s[R%d]\n", d, adrsym, a);
-				emu->reg[d] = (emu->adr + emu->reg[a]) % RAM_SIZE;
+				emu->reg[d] = (emu->adr + emu->reg[a]) % RAM_WORDS;
 				break;
 
 			case 1: /* load */
 				trace_print("load R%d,%s[R%d]\n", d, adrsym, a);
-				emu->reg[d] = emu->ram[(emu->adr + emu->reg[a]) % RAM_SIZE];
+				emu->reg[d] = emu->ram[(emu->adr + emu->reg[a]) % RAM_WORDS];
 				break;
 			case 2: /* store */
 				trace_print("store R%d,%s[R%d]\n", d, adrsym, a);
-				emu->ram[(emu->adr +  emu->reg[a]) % RAM_SIZE] = emu->reg[d];
+				emu->ram[(emu->adr +  emu->reg[a]) % RAM_WORDS] = emu->reg[d];
 				break;
 
 			case 3: /* jump */
 				trace_print("jump R%d,%s[R%d]\n", d, adrsym, a);
-				emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
+				emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
 				break;
 
 			/* NOTE: gotta love PowerPC bit numbering */
@@ -178,29 +174,29 @@ void execute(struct s16emu *emu, htab *symtab)
 			case 4: /* jumpc0 */
 				trace_print("jumpc0 R%d,%s[R%d]\n", d, adrsym, a);
 				if (!(emu->reg[15] & (0x8000 >> d)))
-					emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
+					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
 				break;
 
 			case 5: /* jumpc1 */
 				trace_print("jumpc1 R%d,%s[R%d]\n", d, adrsym, a);
 				if (emu->reg[15] & (0x8000 >> d))
-					emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
+					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
 				break;
 
 			case 6: /* jumpf */
 				trace_print("jumpf R%d,%s[R%d]\n", d, adrsym, a);
 				if (!emu->reg[d])
-					emu->pc = (emu->adr +  emu->reg[a]) % RAM_SIZE;
+					emu->pc = (emu->adr +  emu->reg[a]) % RAM_WORDS;
 				break;
 			case 7: /* jumpt */
 				trace_print("jumpt R%d,%s[R%d]\n", d, adrsym, a);
 				if (emu->reg[d])
-					emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
+					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
 				break;
 			case 8: /* jal */
 				trace_print("jal R%d,%s[R%d]\n", d, adrsym, a);
 				emu->reg[d] = emu->pc;
-				emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
+				emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
 				break;
 			}
 			break;
@@ -209,17 +205,17 @@ void execute(struct s16emu *emu, htab *symtab)
 		/* Enforce R0 = 0 */
 		emu->reg[0] = 0;
 
-		getchar();
-		for (size_t i = 0; i < REG_CNT; ++i) {
-			trace_print("R%ld\t: %04x\n", i, emu->reg[i]);
-		}
+		// getchar();
+		// for (size_t i = 0; i < REG_CNT; ++i) {
+		// 	trace_print("R%ld\t: %04x\n", i, emu->reg[i]);
+		// }
 	}
 }
 
 /*
  * Load program into RAM
  */
-ssize_t load(char *path, uint16_t *ram, size_t ram_size)
+ssize_t load(char *path, uint16_t *ram, size_t ram_words)
 {
 	int fd;
 	uint16_t *ptr;
@@ -234,7 +230,7 @@ ssize_t load(char *path, uint16_t *ram, size_t ram_size)
 	ptr = ram;
 	while (0 < read(fd, buf, sizeof(buf))) {
 		/* Make sure the program actually fits into RAM */
-		if (ptr >= ram + ram_size) {
+		if (ptr >= ram + ram_words) {
 			fprintf(stderr, "Program too big!\n");
 			goto err;
 		}
@@ -331,19 +327,31 @@ err:
 
 int main(int argc, char *argv[])
 {
+	int opt;
+	char *arg_sym;
+
 	struct s16emu *emu;
 	ssize_t prog_size;
 
 	htab symtab;
 
-	printf("%d\n", (10) % (-4));
+	while (-1 != (opt = getopt(argc, argv, "hts:")))
+		switch (opt) {
+		case 's':
+			arg_sym = optarg;
+			break;
+		case 't':
+			dotrace = 1;
+			break;
+		case 'h':
+		default:
+			goto print_usage;
+		}
 
-	if (argc < 2) {
-		fprintf(stderr, "%s PROGRAM [SYMTAB]\n", argv[0]);
-		return 1;
-	}
+	if (optind >= argc)
+		goto print_usage;
 
-	if (argc >= 3 && -1 == load_symtab(argv[2], &symtab)) {
+	if (arg_sym && -1 == load_symtab(arg_sym, &symtab)) {
 		return 1;
 	}
 
@@ -351,14 +359,14 @@ int main(int argc, char *argv[])
 	if (!emu) /* We can't do much if malloc fails */
 		abort();
 
-	prog_size = load(argv[1], emu->ram, RAM_SIZE);
+	prog_size = load(argv[optind], emu->ram, RAM_WORDS);
 	if (-1 == prog_size) {
 		free(emu);
 		return 1;
 	}
 	printf("Loaded %ld word program!\n", prog_size);
 
-	if (argc >= 3) {
+	if (arg_sym) {
 		execute(emu, &symtab);
 		htab_del(&symtab, 1);
 	} else {
@@ -366,4 +374,8 @@ int main(int argc, char *argv[])
 	}
 
 	return 0;
+
+print_usage:
+	fprintf(stderr, "Usage: %s [-h] [-t]\n", argv[0]);
+	return 1;
 }
