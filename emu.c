@@ -101,7 +101,7 @@ void execute(uint16_t *ram, size_t ram_size, htab *symtab)
 			/* FIXME: this assumes two's compliment representation by host */
 			EQU_BIT(gregs[0xf], ccg, (int16_t) gregs[INSN_RA(ir)] >
 				(int16_t) gregs[INSN_RB(ir)]);
-			EQU_BIT(gregs[0xf], ccl, (int16_t) INSN_RA(ir) <
+			EQU_BIT(gregs[0xf], ccl, (int16_t) gregs[INSN_RA(ir)] <
 				(int16_t) gregs[INSN_RB(ir)]);
 			break;
 		case 0x5000: /* cmplt */
@@ -128,8 +128,6 @@ void execute(uint16_t *ram, size_t ram_size, htab *symtab)
 				trapptr = ram + gregs[INSN_RA(ir)];
 				for (i = 0; i < gregs[INSN_RB(ir)]; ++i)
 					printf("%c", (int) BEWORD(trapptr[i]));
-				if (i > 0)
-					printf("\n");
 			}
 
 			break;
@@ -200,8 +198,8 @@ void execute(uint16_t *ram, size_t ram_size, htab *symtab)
 		/* Enforce R0 = 0 */
 		gregs[0] = 0;
 
-		dumpregs(gregs);
-		getchar();
+		// dumpregs(gregs);
+		// getchar();
 	}
 }
 
