@@ -76,6 +76,8 @@ void s16div(s16word *q, s16word *r, s16word a, s16word b)
 	if (i_q < 0 && i_a % i_b) /* Emulate floor division */
 		--i_q;
 
-	*q = intotos16word(i_q);
-	*r = intotos16word(a - b * i_q);
+	if (q)
+		*q = intotos16word(i_q);
+	if (r)
+		*r = intotos16word(a - b * i_q);
 }

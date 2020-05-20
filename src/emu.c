@@ -58,7 +58,6 @@ static void trap_write(struct s16emu *emu, uint16_t a, uint16_t b)
 void execute(struct s16emu *emu, htab *symtab)
 {
 	uint8_t op, d, a, b;
-	uint16_t t1, t2;
 
 	char adrbuf[10];
 	char *adrsym;
@@ -74,31 +73,26 @@ void execute(struct s16emu *emu, htab *symtab)
 		b = INSN_RB(emu->ir);
 
 		switch (op) {
+
 		case 0: /* add */
 			trace_print("add R%d,R%d,R%d\n", d, a, b);
-			t1 = emu->reg[a] + emu->reg[b];
-			emu->reg[d] = t1;
+			s16add(&emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
+
 		case 1: /* sub */
 			trace_print("sub R%d,R%d,R%d\n", d, a, b);
-			t1 = emu->reg[a] + ~emu->reg[b] + 1;
-			emu->reg[d] = t1;
+			s16sub(&emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
+
 		case 2: /* mul */
 			trace_print("mul R%d,R%d,R%d\n", d, a, b);
-			t1 = (int16_t) emu->reg[a] * (int16_t) emu->reg[b];
-			emu->reg[d] = t1;
+			s16mul(&emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
+
 		case 3: /* div */
 			trace_print("div R%d,R%d,R%d\n", d, a, b);
-			t1 = (int16_t) emu->reg[a] / (int16_t) emu->reg[b];
-			t2 = (int16_t) emu->reg[a] % (int16_t) emu->reg[b];
-			if (d != 15) {
-				emu->reg[d] = t1;
-				emu->reg[15] = t2;
-			} else {
-				emu->reg[15] = t1;
-			}
+			s16div(&emu->reg[d], d != 15 ? &emu->reg[15] : NULL,
+				emu->reg[a], emu->reg[b]);
 			break;
 		case 4: /* cmp */
 			trace_print("cmp R%d,R%d\n", a, b);

@@ -7,6 +7,7 @@ LIBS    :=
 OBJ := \
 	lib/dynarr.o \
 	lib/htab.o \
+	src/math.o \
 	src/emu.o
 
 
