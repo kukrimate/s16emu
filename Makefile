@@ -1,11 +1,10 @@
 # Compiler flags
-CFLAGS  := -std=c99 -D_GNU_SOURCE -pedantic -Wall \
-	-Wdeclaration-after-statement -Wno-parentheses -g
+CFLAGS  := -D_GNU_SOURCE -std=c99 -Wpedantic -Wall -g
 LDFLAGS :=
 LIBS    :=
 
 # Object files
-OBJ := dynarr.o emu.o
+OBJ := emu.o
 
 .PHONY: all
 all: s16emu
@@ -18,5 +17,4 @@ s16emu: $(OBJ)
 
 .PHONY: clean
 clean:
-	find -name '*.o' -delete
-	rm -f s16emu
+	rm -f *.o s16emu

@@ -1,267 +1,233 @@
 #include <stdio.h>
-#include <stdint.h>
 #include <stdlib.h>
-#include <ctype.h>
-#include <string.h>
+#include <stdint.h>
+
 #include <fcntl.h>
 #include <unistd.h>
-#include "dynarr.h"
 
-static int readlines(int fd, dynarr *lines)
+#ifdef LITTLE_ENDIAN
+	#define BEWORD(x) (x << 8 | x >> 8)
+#else
+	#define BEWORD(x) x
+#endif
+
+#define INSN_RD(insn) (insn >> 8 & 0xf)
+#define INSN_RA(insn) (insn >> 4 & 0xf)
+#define INSN_RB(insn) (insn & 0xf)
+
+#define ccG 15
+#define ccg 14
+#define ccE 13
+#define ccl 12
+#define ccL 11
+
+#define EQU_BIT(x, bit, val) \
+	if (val) { x |= (1 << bit); } else { x &= ~(1 << bit); }
+
+/*
+ * Execute instruction
+ */
+void execute(uint16_t *ram, size_t ram_size)
 {
-	ssize_t len;
-	char buf[4096], *bptr;
-	dynarr tmp;
+	/* Decode registers */
+	uint16_t pc, ir, adr;
+	/* ISA registers */
+	uint16_t gregs[0xf];
 
-	dynarr_new(&tmp, sizeof(char));
+	size_t i;
+	uint16_t *trapptr;
 
-	while (0 < (len = read(fd, buf, sizeof(buf))))
-		for (bptr = buf; bptr < buf + len; ++bptr) {
-			switch (*bptr) {
-			case '\n':
-				if (tmp.elem_count) {
-					dynarr_addp(lines, strndup(tmp.buffer, tmp.elem_count));
-					tmp.elem_count = 0;
-				}
+	/* Reset vector is zero */
+	pc = 0;
+
+	for (;;) {
+		printf("PC: %04x\t", pc);
+
+		ir = ram[pc++];
+		ir = BEWORD(ir);
+
+		switch (ir & 0xf000) {
+		case 0x0000: /* add */
+			printf("add R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
+			gregs[INSN_RD(ir)] = gregs[INSN_RA(ir)] + gregs[INSN_RB(ir)];
+			break;
+		case 0x1000: /* sub */
+			printf("sub R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
+			gregs[INSN_RD(ir)] = gregs[INSN_RA(ir)] - gregs[INSN_RB(ir)];
+			break;
+		case 0x2000: /* mul */
+			printf("mul R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
+			gregs[INSN_RD(ir)] = gregs[INSN_RA(ir)] * gregs[INSN_RB(ir)];
+			break;
+		case 0x3000: /* div */
+			printf("div R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
+			if (INSN_RD(ir) != 0xf) {
+				gregs[INSN_RD(ir)] = gregs[INSN_RA(ir)] / gregs[INSN_RB(ir)];
+				gregs[0xf] = gregs[INSN_RA(ir)] % gregs[INSN_RB(ir)];
+			} else {
+				gregs[0xf] = gregs[INSN_RA(ir)] / gregs[INSN_RB(ir)];
+			}
+			break;
+		case 0x4000: /* cmp */
+			printf("cmp R%d,R%d\n", INSN_RA(ir), INSN_RB(ir));
+			EQU_BIT(gregs[0xf], ccE, INSN_RA(ir) == INSN_RB(ir));
+			EQU_BIT(gregs[0xf], ccG, INSN_RA(ir) > INSN_RB(ir));
+			EQU_BIT(gregs[0xf], ccL, INSN_RA(ir) < INSN_RB(ir));
+
+			/* FIXME: this assumes two's compliment representation by host */
+			EQU_BIT(gregs[0xf], ccg, (int16_t) INSN_RA(ir) >
+				(int16_t) INSN_RB(ir));
+			EQU_BIT(gregs[0xf], ccl, (int16_t) INSN_RA(ir) <
+				(int16_t) INSN_RB(ir));
+			break;
+		case 0x5000: /* cmplt */
+			printf("cmplt R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
+			gregs[0xf] = gregs[INSN_RA(ir)] < gregs[INSN_RB(ir)];
+			break;
+		case 0x6000: /* cmpeq */
+			printf("cmpeq R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
+			gregs[0xf] = gregs[INSN_RA(ir)] == gregs[INSN_RB(ir)];
+			break;
+		case 0x7000: /* cmpgt */
+			printf("cmpgt R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
+			gregs[0xf] = gregs[INSN_RA(ir)] > gregs[INSN_RB(ir)];
+			break;
+		case 0xd000: /* trap */
+			printf("trap R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
+
+			/* End of program */
+			if (!INSN_RD(ir) && !INSN_RA(ir) && !INSN_RB(ir))
+				return;
+
+			/* Trap write */
+			if (gregs[INSN_RD(ir)] == 2) {
+				trapptr = ram + gregs[INSN_RA(ir)];
+				for (i = 0; i < gregs[INSN_RB(ir)]; ++i)
+					printf("%c", (int) BEWORD(trapptr[i]));
+				if (i > 0)
+					printf("\n");
+			}
+
+			break;
+		case 0xf000: /* RX format */
+			adr = ram[pc++];
+			adr = BEWORD(adr);
+
+			switch (INSN_RB(ir)) {
+			/* NOTE: doc is silent on the issue,
+				but I do iAPX86 style wraparound for address overflows */
+			case 0: /* lea */
+				printf("lea R%d,%04x[R%d]\n", INSN_RD(ir), adr, INSN_RA(ir));
+				gregs[INSN_RD(ir)] = (adr + INSN_RA(ir)) % ram_size;
 				break;
-			default:
-				dynarr_addc(&tmp, *bptr);
+			case 1: /* load */
+				printf("load R%d,%04x[R%d]\n", INSN_RD(ir), adr, INSN_RA(ir));
+				gregs[INSN_RD(ir)] = ram[(adr + INSN_RA(ir)) % ram_size];
+				break;
+			case 2: /* store */
+				printf("store R%d,%04x[R%d]\n", INSN_RD(ir), adr, INSN_RA(ir));
+				ram[(adr + INSN_RA(ir)) % ram_size] = gregs[INSN_RD(ir)];
+				break;
+			case 3: /* jump */
+				printf("jump R%d,%04x[R%d]\n", INSN_RD(ir), adr, INSN_RA(ir));
+				pc = (adr + INSN_RA(ir)) % ram_size;
+				break;
+			case 4: /* jumpc0 (these have incredibly retarded names but oh well) */
+				printf("jumpc0 R%d,%04x[R%d]\n", INSN_RD(ir), adr, INSN_RA(ir));
+				if (gregs[0xf] & (1 << INSN_RD(ir)))
+					pc = (adr + INSN_RA(ir)) % ram_size;
+				break;
+			case 5: /* jumpc1 */
+				printf("jumpc1 R%d,%04x[R%d]\n", INSN_RD(ir), adr, INSN_RA(ir));
+				if (!(gregs[0xf] & (1 << INSN_RD(ir))))
+					pc = (adr + INSN_RA(ir)) % ram_size;
+				break;
+			case 6: /* jumpf */
+				printf("jumpf R%d,%04x[R%d]\n", INSN_RD(ir), adr, INSN_RA(ir));
+				if (!gregs[INSN_RD(ir)])
+					pc = (adr + INSN_RA(ir)) % ram_size;
+				break;
+			case 7: /* jumpt */
+				printf("jumpt R%d,%04x[R%d]\n", INSN_RD(ir), adr, INSN_RA(ir));
+				if (gregs[INSN_RD(ir)])
+					pc = (adr + INSN_RA(ir)) % ram_size;
+				break;
+			case 8: /* jal */
+				printf("jal R%d,%04x[R%d]\n", INSN_RD(ir), adr, INSN_RA(ir));
+				gregs[INSN_RD(ir)] = pc;
+				pc = (adr + INSN_RA(ir)) % ram_size;
 				break;
 			}
-		}
-
-	if (-1 == len) {
-		perror("read");
-		goto err;
-	}
-
-	if (tmp.elem_count) /* If the last line isn't '\n' terminated */
-		dynarr_addp(lines, strndup(tmp.buffer, tmp.elem_count));
-
-	dynarr_del(&tmp);
-	return 0;
-err:
-	dynarr_del(&tmp);
-	return -1;
-}
-
-static char *strstrip(char *s, size_t n)
-{
-	char *start, *end;
-
-	for (start = s; start < s + n; ++start)
-		if (!isspace(*start))
-			break;
-	for (end = s + n - 1; end >= start; --end)
-		if (!isspace(*end))
-			break;
-
-	return strndup(start, end - start + 1);
-}
-
-static void tohex(char *l, dynarr *data)
-{
-	dynarr tmp;
-
-	char *tstr;
-	uint16_t val;
-
-	dynarr_new(&tmp, sizeof(char));
-	for (; *l; ++l)
-		switch (*l) {
-		case ',':
-			tstr = strstrip(tmp.buffer, tmp.elem_count);
-			val = (uint16_t) strtol(tstr, NULL, 16);
-			free(tstr);
-			tmp.elem_count = 0;
-			dynarr_add(data, 1, &val);
-			break;
-		default:
-			dynarr_addc(&tmp, *l);
 			break;
 		}
-	if (tmp.elem_count) {
-		tstr = strstrip(tmp.buffer, tmp.elem_count);
-		val = (uint16_t) strtol(tstr, NULL, 16);
-		free(tstr);
-		tmp.elem_count = 0;
-		dynarr_add(data, 1, &val);
+
+		/* Enforce R0 = 0 */
+		gregs[0] = 0;
 	}
-	dynarr_del(&tmp);
 }
 
-static int load(char *path, dynarr *data, dynarr *reloc)
+/*
+ * Load program into RAM
+ */
+ssize_t load(char *path, uint16_t *ram, size_t ram_size)
 {
 	int fd;
-	dynarr lines;
-	char **l;
+	off_t prog_size;
 
 	fd = open(path, O_RDONLY);
 	if (-1 == fd) {
-		perror("open");
+		perror(path);
 		return -1;
 	}
 
-	dynarr_new(&lines, sizeof(char *));
-
-	if (-1 == readlines(fd, &lines))
-		goto err;
-	dynarr_addp(&lines, NULL);
-
-	for (l = dynarr_ptr(&lines, 0); *l; ++l) {
-		if (!strncmp(*l, "data", 4)) {
-			tohex(*l + 4, data);
-		} else if (!strncmp(*l, "relocate", 8)) {
-			tohex(*l + 8, reloc);
-		} else {
-			fprintf(stderr, "Unrecongized keyword -> %s\n", *l);
-			goto err;
-		}
+	prog_size = lseek(fd, 0, SEEK_END);
+	if (-1 == prog_size) {
+		close(fd);
+		perror(path);
+		return -1;
+	}
+	if (prog_size % sizeof(uint16_t)) {
+		fprintf(stderr, "Program size needs to be multiple of word size!\n");
+		close(fd);
+		return -1;
+	}
+	if (prog_size / sizeof(uint16_t) > ram_size) {
+		fprintf(stderr, "Program size must be less then or equal to RAM size!\n");
+		close(fd);
+		return -1;
 	}
 
-	dynarr_delall(&lines);
-	close(fd);
-	return 0;
-err:
-	dynarr_delall(&lines);
-	close(fd);
-	return -1;
-}
-
-#define REGISTERS 16
-#define RAM_WORDS 0xffff
-
-static void run(uint16_t *ram)
-{
-	uint16_t regs[REGISTERS];
-
-	uint16_t pc, c, disp;
-	uint8_t op, d, a, b;
-
-	pc = 0;
-	bzero(regs, sizeof(regs));
-
-	for (;;) {
-		c = ram[pc];
-
-		op = (c >> 12) & 0xf;
-		d = (c >> 8) & 0xf;
-		a = (c >> 4) & 0xf;
-		b = c & 0xf;
-
-		if (op == 0xf) {
-			pc = (pc + 1) % RAM_WORDS;
-			disp = ram[pc];
-		}
-
-		switch (op) {
-		case 0: /* add */
-			printf("add R%u,R%u,R%u\n", d, a, b);
-			regs[d] = regs[a] + regs[b];
-			break;
-		case 1: /* sub */
-			printf("sub R%u,R%u,R%u\n", d, a, b);
-			regs[d] = regs[a] - regs[b];
-			break;
-		case 2: /* mul */
-			printf("mul R%u,R%u,R%u\n", d, a, b);
-			regs[d] = regs[a] * regs[b];
-			break;
-		case 3: /* div */
-			printf("div R%u,R%u,R%u\n", d, a, b);
-			regs[d] = regs[a] / regs[b];
-			regs[15] = regs[a] % regs[b];
-			break;
-		case 4: /* cmp */
-			break;
-		case 5: /* cmplt */
-			break;
-		case 6: /* cmpeq */
-			break;
-		case 7: /* cmpgt */
-			break;
-		case 8: /* inv */
-			regs[d] = ~regs[a];
-			break;
-		case 9: /* and */
-			regs[d] = regs[a] & regs[b];
-			break;
-		case 0xa: /* or */
-			regs[d] = regs[a] | regs[b];
-			break;
-		case 0xb: /* xor */
-			regs[d] = regs[a] ^ regs[b];
-			break;
-		case 0xc: /* nop */
-			printf("nop");
-			break;
-		case 0xd: /* trap */
-			printf("trap R%u,R%u,R%u\n", d, a, b);
-			if (!d && !a && !b)
-				return;
-			break;
-		case 0xe:
-			fprintf(stderr, "EXP formats are not supported as of now\n");
-			exit(1);
-			break;
-		case 0xf:
-			switch (b) {
-			case 0: /* lea */
-				printf("lea R%u,$%x[R%u]\n", d, disp, a);
-				regs[d] = regs[a] + disp;
-				break;
-			case 1: /* load */
-				printf("load R%u,$%x[R%u]\n", d, disp, a);
-				regs[d] = ram[regs[a] + disp];
-				break;
-			case 2: /* store */
-				printf("store R%u,$%x[R%u]\n", d, disp, a);
-				ram[regs[a] + disp] = regs[d];
-				break;
-			case 3: /* jump */
-				pc = regs[a] + disp;
-				continue;
-			}
-			break;
-		}
-
-		pc = (pc + 1) % RAM_WORDS;
+	if (-1 == pread(fd, ram, prog_size, 0)) {
+		perror(path);
+		close(fd);
+		return -1;
 	}
+
+	close(fd);
+	return prog_size / sizeof(uint16_t);
 }
 
 int main(int argc, char *argv[])
 {
-	dynarr data, reloc;
 	uint16_t *ram;
+	ssize_t prog_size;
 
 	if (argc < 2) {
-		fprintf(stderr, "%s PROGRAM\n", argv[0]);
+		fprintf(stderr, "%s PROGRAM [SYMTAB]\n", argv[0]);
 		return 1;
 	}
 
-	dynarr_new(&data, sizeof(uint16_t));
-	dynarr_new(&reloc, sizeof(uint16_t));
+	ram = calloc(0xffff, sizeof(uint16_t));
+	if (!ram) /* We can't do much if malloc fails */
+		abort();
 
-	if (-1 == load(argv[1], &data, &reloc))
-		goto err;
-	if (data.elem_count > RAM_WORDS) {
-		fprintf(stderr, "Your fucking program is too big\n");
-		goto err;
+	prog_size = load(argv[1], ram, 0xffff);
+	if (-1 == prog_size) {
+		free(ram);
+		return 1;
 	}
+	printf("Loaded %ld word program!\n", prog_size);
 
-	ram = calloc(RAM_WORDS, sizeof(uint16_t));
-	/* Load programs at the bottom of memory for now */
-	memcpy(ram, data.buffer, data.elem_count * sizeof(uint16_t));
-	run(ram);
-
-	printf("result: %u\n", ram[0x31]);
-	free(ram);
-
-	dynarr_del(&data);
-	dynarr_del(&reloc);
+	execute(ram, 0xffff);
 	return 0;
-err:
-	dynarr_del(&data);
-	dynarr_del(&reloc);
-	return 1;
 }
