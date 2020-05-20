@@ -1,8 +1,7 @@
 #!/usr/bin/python3
 # Sigma16 assembler in Python, supports the "standard" Sigma16 assembly syntax
 
-# Writes binary to stdout, hexdump to stderr
-
+import argparse
 import sys
 import re
 from enum import Enum
@@ -188,12 +187,12 @@ def assemble(tokens):
 	code = bytearray()
 
 	addr = 0
-	symb = {}
+	symbtab = {}
 
 	# First stage (we build the symbol table)
 	for tok in tokens:
 		if tok.kind == TokenKind.LABL:
-			symb[tok.string] = addr
+			symbtab[tok.string] = addr
 		elif tok.kind == TokenKind.INSN:
 			if tok.string in insn_size:
 				addr += insn_size[tok.string]
@@ -218,30 +217,28 @@ def assemble(tokens):
 
 		# Assemble and append instruction
 		args = data.string
-		for s, addr in sorted(symb.items(),
+		for s, addr in sorted(symbtab.items(),
 						key=lambda x: len(x[0]), reverse=True):
 			args = args.replace(s, str(addr))
 
-		insn_bytes = insn_func[insn.string](args)
-		import binascii
-		print("%s %s\t%s"
-			%(insn, data, binascii.hexlify(insn_bytes).decode()), file=sys.stderr)
+		code += insn_func[insn.string](args)
 
-		code += insn_bytes
+	return bytes(code), symbtab
 
-	with open("symtab", "w") as f:
-		for k, v in symb.items():
-			f.write("%s:%s\n" %(k,v))
-
-	return bytes(code)
-
-if len(sys.argv) < 2:
-	print("Usage: %s ASMFILE" %sys.argv[0], file=sys.stderr)
-	exit(1)
+parser = argparse.ArgumentParser(description="Python assembler for Sigma16")
+parser.add_argument("IASM", help="Input assembly file")
+parser.add_argument("-o", metavar="OBIN", help="Output binary")
+parser.add_argument('-s', metavar="OSYM", help="Output symbol table")
+args = parser.parse_args()
 
 # Assemble file
 with open(sys.argv[1]) as f:
-	s16bin = assemble(tokenize(f.read()))
+	code, symtab = assemble(tokenize(f.read()))
 
-# Write binary to stdout
-sys.stdout.buffer.write(s16bin)
+if args.o:
+	with open(args.o, "wb") as f:
+		f.write(code)
+
+if args.s:
+	with open(args.s, "w") as f:
+		f.write("\n".join(["%s:%s" %(k,v) for k,v in symtab.items()]))
