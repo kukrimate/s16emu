@@ -10,8 +10,8 @@
 #include "htab.h"
 
 /* Enable or disable tracer */
-// #define trace_print(x, ...) fprintf(stderr, x, __VA_ARGS__)
-#define trace_print(x, ...)
+#define trace_print(x, ...) fprintf(stderr, x, __VA_ARGS__)
+// #define trace_print(x, ...)
 
 #define INSN_OP(insn) (insn >> 12 & 0xf)
 #define INSN_RD(insn) (insn >> 8 & 0xf)
@@ -95,8 +95,8 @@ void execute(struct s16emu *emu, htab *symtab)
 			break;
 		case 3: /* div */
 			trace_print("div R%d,R%d,R%d\n", d, a, b);
-			t1 = emu->reg[a] / emu->reg[b];
-			t2 = emu->reg[a] % emu->reg[b];
+			t1 = (int16_t) emu->reg[a] / (int16_t) emu->reg[b];
+			t2 = (int16_t) emu->reg[a] % (int16_t) emu->reg[b];
 			if (d != 15) {
 				emu->reg[d] = t1;
 				emu->reg[15] = t2;
@@ -111,10 +111,10 @@ void execute(struct s16emu *emu, htab *symtab)
 			SET_BIT(emu->reg[15], ccL, emu->reg[a] < emu->reg[b]);
 
 			/* FIXME: this assumes two's compliment representation by host */
-			SET_BIT(emu->reg[15], ccg, (int16_t) emu->reg[a] >
-				(int16_t) emu->reg[b]);
-			SET_BIT(emu->reg[15], ccl, (int16_t) emu->reg[a] <
-				(int16_t) emu->reg[b]);
+			SET_BIT(emu->reg[15], ccg,
+				(int16_t) emu->reg[a] > (int16_t) emu->reg[b]);
+			SET_BIT(emu->reg[15], ccl,
+				(int16_t) emu->reg[a] < (int16_t) emu->reg[b]);
 			break;
 		case 5: /* cmplt */
 			trace_print("cmplt R%d,R%d,R%d\n", d, a, b);
@@ -170,18 +170,23 @@ void execute(struct s16emu *emu, htab *symtab)
 
 			case 3: /* jump */
 				trace_print("jump R%d,%s[R%d]\n", d, adrsym, a);
-				emu->pc = (emu->adr +  emu->reg[a]) % RAM_SIZE;
+				emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
 				break;
+
+			/* NOTE: gotta love PowerPC bit numbering */
+
 			case 4: /* jumpc0 */
 				trace_print("jumpc0 R%d,%s[R%d]\n", d, adrsym, a);
 				if (!(emu->reg[15] & (0x8000 >> d)))
 					emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
 				break;
+
 			case 5: /* jumpc1 */
 				trace_print("jumpc1 R%d,%s[R%d]\n", d, adrsym, a);
 				if (emu->reg[15] & (0x8000 >> d))
 					emu->pc = (emu->adr + emu->reg[a]) % RAM_SIZE;
 				break;
+
 			case 6: /* jumpf */
 				trace_print("jumpf R%d,%s[R%d]\n", d, adrsym, a);
 				if (!emu->reg[d])
@@ -203,6 +208,11 @@ void execute(struct s16emu *emu, htab *symtab)
 
 		/* Enforce R0 = 0 */
 		emu->reg[0] = 0;
+
+		getchar();
+		for (size_t i = 0; i < REG_CNT; ++i) {
+			trace_print("R%ld\t: %04x\n", i, emu->reg[i]);
+		}
 	}
 }
 
@@ -325,6 +335,8 @@ int main(int argc, char *argv[])
 	ssize_t prog_size;
 
 	htab symtab;
+
+	printf("%d\n", (10) % (-4));
 
 	if (argc < 2) {
 		fprintf(stderr, "%s PROGRAM [SYMTAB]\n", argv[0]);

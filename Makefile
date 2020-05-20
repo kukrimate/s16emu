@@ -1,10 +1,14 @@
 # Compiler flags
-CFLAGS  := -D_GNU_SOURCE -std=c99 -Wpedantic -Wall -g
+CFLAGS  := -Ilib -D_GNU_SOURCE -std=c99 -Wpedantic -Wall -g
 LDFLAGS :=
 LIBS    :=
 
 # Object files
-OBJ := emu.o dynarr.o htab.o
+OBJ := \
+	lib/dynarr.o \
+	lib/htab.o \
+	src/emu.o
+
 
 .PHONY: all
 all: s16emu
@@ -17,4 +21,4 @@ s16emu: $(OBJ)
 
 .PHONY: clean
 clean:
-	rm -f *.o s16emu
+	rm -f $(OBJ) s16emu
