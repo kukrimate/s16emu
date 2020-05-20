@@ -13,13 +13,6 @@
 #define trace_print(x, ...) fprintf(stderr, x, __VA_ARGS__)
 // #define trace_print(x, ...)
 
-/* Do byteswapping on LE machines */
-#ifdef LITTLE_ENDIAN
-	#define BEWORD(x) (x << 8 | x >> 8)
-#else
-	#define BEWORD(x) x
-#endif
-
 #define INSN_RD(insn) (insn >> 8 & 0xf)
 #define INSN_RA(insn) (insn >> 4 & 0xf)
 #define INSN_RB(insn) (insn & 0xf)
@@ -68,7 +61,6 @@ void execute(uint16_t *ram, size_t ram_size, htab *symtab)
 		trace_print("PC: %04x\t", pc);
 
 		ir = ram[pc++];
-		ir = BEWORD(ir);
 
 		switch (ir & 0xf000) {
 		case 0x0000: /* add */
@@ -119,7 +111,7 @@ void execute(uint16_t *ram, size_t ram_size, htab *symtab)
 		case 0xd000: /* trap */
 			trace_print("trap R%d,R%d,R%d\n", INSN_RD(ir), INSN_RA(ir), INSN_RB(ir));
 
-			/* End of program */
+			/* Trap exit */
 			if (!INSN_RD(ir) && !INSN_RA(ir) && !INSN_RB(ir))
 				return;
 
@@ -127,13 +119,12 @@ void execute(uint16_t *ram, size_t ram_size, htab *symtab)
 			if (gregs[INSN_RD(ir)] == 2) {
 				trapptr = ram + gregs[INSN_RA(ir)];
 				for (i = 0; i < gregs[INSN_RB(ir)]; ++i)
-					printf("%c", (int) BEWORD(trapptr[i]));
+					printf("%c", (int) trapptr[i]);
 			}
 
 			break;
 		case 0xf000: /* RX format */
 			adr = ram[pc++];
-			adr = BEWORD(adr);
 
 			if (symtab)
 				adrsym = htab_get(symtab, adr);
@@ -155,11 +146,11 @@ void execute(uint16_t *ram, size_t ram_size, htab *symtab)
 
 			case 1: /* load */
 				trace_print("load R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				gregs[INSN_RD(ir)] = BEWORD(ram[(adr + gregs[INSN_RA(ir)]) % ram_size]);
+				gregs[INSN_RD(ir)] = ram[(adr + gregs[INSN_RA(ir)]) % ram_size];
 				break;
 			case 2: /* store */
 				trace_print("store R%d,%s[R%d]\n", INSN_RD(ir), adrsym, INSN_RA(ir));
-				ram[(adr +  gregs[INSN_RA(ir)]) % ram_size] = BEWORD(gregs[INSN_RD(ir)]);
+				ram[(adr +  gregs[INSN_RA(ir)]) % ram_size] = gregs[INSN_RD(ir)];
 				break;
 
 			case 3: /* jump */
@@ -209,7 +200,8 @@ void execute(uint16_t *ram, size_t ram_size, htab *symtab)
 ssize_t load(char *path, uint16_t *ram, size_t ram_size)
 {
 	int fd;
-	off_t prog_size;
+	uint16_t *ptr;
+	uint8_t buf[2];
 
 	fd = open(path, O_RDONLY);
 	if (-1 == fd) {
@@ -217,31 +209,23 @@ ssize_t load(char *path, uint16_t *ram, size_t ram_size)
 		return -1;
 	}
 
-	prog_size = lseek(fd, 0, SEEK_END);
-	if (-1 == prog_size) {
-		close(fd);
-		perror(path);
-		return -1;
-	}
-	if (prog_size % sizeof(uint16_t)) {
-		fprintf(stderr, "Program size needs to be multiple of word size!\n");
-		close(fd);
-		return -1;
-	}
-	if (prog_size / sizeof(uint16_t) > ram_size) {
-		fprintf(stderr, "Program size must be less then or equal to RAM size!\n");
-		close(fd);
-		return -1;
-	}
+	ptr = ram;
+	while (0 < read(fd, buf, sizeof(buf))) {
+		/* Make sure the program actually fits into RAM */
+		if (ptr >= ram + ram_size) {
+			fprintf(stderr, "Program too big!\n");
+			goto err;
+		}
 
-	if (-1 == pread(fd, ram, prog_size, 0)) {
-		perror(path);
-		close(fd);
-		return -1;
+		/* Load big endian words from the file in native endianness */
+		*ptr++ = buf[0] << 8 | buf[1];
 	}
 
 	close(fd);
-	return prog_size / sizeof(uint16_t);
+	return (ptr - ram) / sizeof(uint16_t);
+err:
+	close(fd);
+	return -1;
 }
 
 /*
@@ -335,8 +319,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (argc >= 3 &&
-			-1 == load_symtab(argv[2], &symtab)) {
+	if (argc >= 3 && -1 == load_symtab(argv[2], &symtab)) {
 		return 1;
 	}
 

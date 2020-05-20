@@ -208,7 +208,7 @@ def assemble(tokens):
 		if insn.kind != TokenKind.INSN:
 			continue
 
-		# Get an verify data for it
+		# Get and verify data for it
 		if len(tokens) == 0:
 			raise Exception("Instruction %s requires data" %insn.string)
 		data = tokens.pop(0)
