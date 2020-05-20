@@ -16,8 +16,8 @@ lea     	 RX   	 RX     	 f,0   	 Rd := Ra+disp
 load    	 RX   	 RX     	 f,1   	 Rd := mem[Ra+disp]
 store   	 RX   	 RX     	 f,2   	 mem[Ra+disp] := Rd
 jump    	 JX   	 RX     	 f,3   	 pc := Ra+disp
-jumpc0  	 KX   	 RX     	 f,4   	 if R15.k=1 then pc := Ra+disp
-jumpc1  	 KX   	 RX     	 f,5   	 if R15.k=0 then pc := Ra+disp
+jumpc0  	 KX   	 RX     	 f,4   	 if R15.k=0 then pc := Ra+disp
+jumpc1  	 KX   	 RX     	 f,5   	 if R15.k=1 then pc := Ra+disp
 jumpf   	 RX   	 RX     	 f,6   	 if Rd=0 then pc := Ra+disp
 jumpt   	 RX   	 RX     	 f,7   	 if Rd/=0 then pc := Ra+disp
 jal     	 RX   	 RX     	 f,8   	 Rd := pc, pc := Ra+disp
