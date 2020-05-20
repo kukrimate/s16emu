@@ -4,7 +4,7 @@ LDFLAGS :=
 LIBS    :=
 
 # Object files
-OBJ := emu.o
+OBJ := emu.o dynarr.o htab.o
 
 .PHONY: all
 all: s16emu

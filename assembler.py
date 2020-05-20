@@ -1,5 +1,8 @@
 #!/usr/bin/python3
 # Sigma16 assembler in Python, supports the "standard" Sigma16 assembly syntax
+
+# Writes binary to stdout, hexdump to stderr
+
 import sys
 import re
 from enum import Enum
@@ -100,7 +103,7 @@ def encode_ea(ea):
 SIZE_RX = 2
 
 # Assemble an RX instruction
-def encode_rx(opcode, data, fixa):
+def encode_rx(opcode, data, fixd):
 	args = data.split(",")
 
 	rd = 0
@@ -115,8 +118,8 @@ def encode_rx(opcode, data, fixa):
 	else:
 		raise Exception("Bad data for RX instruction")
 
-	if fixa > 0:
-		ra = fixa
+	if fixd > 0:
+		rd = fixd
 
 	return struct.pack(">H", 0xf << 12 | rd << 8 | ra << 4 | opcode) + disp
 
@@ -169,12 +172,12 @@ insn_func = {
 	"jumpc0": lambda x: encode_rx(0x4, x, 0),
 	"jumpc1": lambda x: encode_rx(0x5, x, 0),
 
-	"jumplt": lambda x: encode_rx(0x5, x, 11),
-	"jumple": lambda x: encode_rx(0x4, x, 15),
-	"jumpne": lambda x: encode_rx(0x4, x, 13),
-	"jumpeq": lambda x: encode_rx(0x5, x, 13),
-	"jumpge": lambda x: encode_rx(0x4, x, 11),
-	"jumpgt": lambda x: encode_rx(0x5, x, 15),
+	"jumplt": lambda x: encode_rx(0x5, x, 3),
+	"jumple": lambda x: encode_rx(0x4, x, 1),
+	"jumpne": lambda x: encode_rx(0x4, x, 2),
+	"jumpeq": lambda x: encode_rx(0x5, x, 2),
+	"jumpge": lambda x: encode_rx(0x4, x, 3),
+	"jumpgt": lambda x: encode_rx(0x5, x, 1),
 
 	"jumpf" : lambda x: encode_rx(0x6, x, 0),
 	"jumpt" : lambda x: encode_rx(0x7, x, 0),
@@ -219,7 +222,12 @@ def assemble(tokens):
 						key=lambda x: len(x[0]), reverse=True):
 			args = args.replace(s, str(addr))
 
-		code += insn_func[insn.string](args)
+		insn_bytes = insn_func[insn.string](args)
+		import binascii
+		print("%s %s\t%s"
+			%(insn, data, binascii.hexlify(insn_bytes).decode()), file=sys.stderr)
+
+		code += insn_bytes
 
 	with open("symtab", "w") as f:
 		for k, v in symb.items():
