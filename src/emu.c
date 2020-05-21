@@ -353,6 +353,7 @@ int main(int argc, char *argv[])
 		execute(emu, NULL);
 	}
 
+	free(emu);
 	return 0;
 
 print_usage:
