@@ -12,6 +12,7 @@
 
 #include "internal.h"
 
+/* Enable tracing */
 static _Bool dotrace = 0;
 
 static void trace_print(char *fmt, ...)
@@ -24,6 +25,9 @@ static void trace_print(char *fmt, ...)
 	vprintf(fmt, ap);
 	va_end(ap);
 }
+
+/* Enable stupidly-simple "debugger" */
+static _Bool dodebug = 0;
 
 /*
  * Traps
@@ -185,10 +189,12 @@ void execute(struct s16emu *emu, htab *symtab)
 		/* Enforce R0 = 0 */
 		emu->reg[0] = 0;
 
-		// getchar();
-		// for (size_t i = 0; i < REG_CNT; ++i) {
-		// 	trace_print("R%ld\t: %04x\n", i, emu->reg[i]);
-		// }
+		if (dodebug) {
+			getchar();
+			for (size_t i = 0; i < REG_COUNT; ++i) {
+				trace_print("R%ld\t: %04x\n", i, emu->reg[i]);
+			}
+		}
 	}
 }
 
@@ -315,13 +321,16 @@ int main(int argc, char *argv[])
 
 	htab symtab;
 
-	while (-1 != (opt = getopt(argc, argv, "hts:")))
+	while (-1 != (opt = getopt(argc, argv, "htds:")))
 		switch (opt) {
 		case 's':
 			arg_sym = optarg;
 			break;
 		case 't':
 			dotrace = 1;
+			break;
+		case 'd':
+			dodebug = 1;
 			break;
 		case 'h':
 		default:
@@ -357,6 +366,6 @@ int main(int argc, char *argv[])
 	return 0;
 
 print_usage:
-	fprintf(stderr, "Usage: %s [-h] [-t]\n", argv[0]);
+	fprintf(stderr, "Usage: %s [-h] [-t] [-d] [-s SYM] BIN\n", argv[0]);
 	return 1;
 }
