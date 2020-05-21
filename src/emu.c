@@ -90,7 +90,7 @@ void execute(struct s16emu *emu, htab *symtab)
 			SET_BIT(emu->reg[15], BIT_ccG, emu->reg[a] > emu->reg[b]);
 			SET_BIT(emu->reg[15], BIT_ccL, emu->reg[a] < emu->reg[b]);
 
-			/* FIXME: this assumes two's compliment representation by host */
+			/* FIXME: this assumes two's complement representation by host */
 			SET_BIT(emu->reg[15], BIT_ccg,
 				(int16_t) emu->reg[a] > (int16_t) emu->reg[b]);
 			SET_BIT(emu->reg[15], BIT_ccl,
@@ -98,15 +98,15 @@ void execute(struct s16emu *emu, htab *symtab)
 			break;
 		case 5: /* cmplt */
 			trace_print("cmplt R%d,R%d,R%d\n", d, a, b);
-			emu->reg[15] = emu->reg[a] < emu->reg[b];
+			emu->reg[d] = (int16_t) emu->reg[a] < (int16_t) emu->reg[b];
 			break;
 		case 6: /* cmpeq */
 			trace_print("cmpeq R%d,R%d,R%d\n", d, a, b);
-			emu->reg[15] = emu->reg[a] == emu->reg[b];
+			emu->reg[d] = emu->reg[a] == emu->reg[b];
 			break;
 		case 7: /* cmpgt */
 			trace_print("cmpgt R%d,R%d,R%d\n", d, a, b);
-			emu->reg[15] = emu->reg[a] > emu->reg[b];
+			emu->reg[d] = (int16_t) emu->reg[a] > (int16_t) emu->reg[b];
 			break;
 		case 0xd: /* trap */
 			trace_print("trap R%d,R%d,R%d\n", d, a, b);
@@ -134,6 +134,7 @@ void execute(struct s16emu *emu, htab *symtab)
 			switch (b) {
 			/* NOTE: doc is silent on the issue,
 				but I do iAPX86 style wraparound for address overflows */
+
 			case 0: /* lea */
 				trace_print("lea R%d,%s[R%d]\n", d, adrsym, a);
 				emu->reg[d] = (emu->adr + emu->reg[a]) % RAM_WORDS;
@@ -143,6 +144,7 @@ void execute(struct s16emu *emu, htab *symtab)
 				trace_print("load R%d,%s[R%d]\n", d, adrsym, a);
 				emu->reg[d] = emu->ram[(emu->adr + emu->reg[a]) % RAM_WORDS];
 				break;
+
 			case 2: /* store */
 				trace_print("store R%d,%s[R%d]\n", d, adrsym, a);
 				emu->ram[(emu->adr +  emu->reg[a]) % RAM_WORDS] = emu->reg[d];
@@ -160,7 +162,6 @@ void execute(struct s16emu *emu, htab *symtab)
 				if (!(emu->reg[15] & (0x8000 >> d)))
 					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
 				break;
-
 			case 5: /* jumpc1 */
 				trace_print("jumpc1 R%d,%s[R%d]\n", d, adrsym, a);
 				if (emu->reg[15] & (0x8000 >> d))
@@ -182,8 +183,12 @@ void execute(struct s16emu *emu, htab *symtab)
 				emu->reg[d] = emu->pc;
 				emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
 				break;
+			default:
+				abort();
 			}
 			break;
+		default:
+			abort();
 		}
 
 		/* Enforce R0 = 0 */

@@ -48,6 +48,9 @@ struct s16emu {
 #define SET_BIT(x, bit, val) \
 	if (val) { x |= (0x8000 >> bit); } else { x &= ~(0x8000 >> bit); }
 
+#define GET_BIT(x, bit) \
+	((x & (0x8000 >> bit)) > 0)
+
 /*
  * TC math emulator
  */
