@@ -130,7 +130,7 @@ comperison.
 - The ccV, ccv, and ccC flags are set accordingly.
 
 ### cmplt Rd,Ra,Rb
-- Check if Ra < Rb.
+- Check if Ra < Rb, treating both as two's complement signed integers.
 - If Ra < Rb than Rd is set to 1, otherwise Rd is set to 0.
 - This instruction does not set any flags.
 
@@ -140,7 +140,7 @@ comperison.
 - This instruction does not set any flags.
 
 ### cmpgt Rd,Ra,Rb
-- Check if Ra > Rb.
+- Check if Ra > Rb, treating both as two's complement signed integers.
 - If Ra > Rb than Rd is set to 1, otherwise Rd is set to 0.
 - This instruction does not set any flags.
 
