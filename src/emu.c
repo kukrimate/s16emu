@@ -25,20 +25,6 @@ static void trace_print(char *fmt, ...)
 	va_end(ap);
 }
 
-#define INSN_OP(insn) (insn >> 12 & 0xf)
-#define INSN_RD(insn) (insn >> 8 & 0xf)
-#define INSN_RA(insn) (insn >> 4 & 0xf)
-#define INSN_RB(insn) (insn & 0xf)
-
-#define ccG 15
-#define ccg 14
-#define ccE 13
-#define ccl 12
-#define ccL 11
-
-#define SET_BIT(x, bit, val) \
-	if (val) { x |= (1 << bit); } else { x &= ~(1 << bit); }
-
 /*
  * Traps
  */
@@ -96,14 +82,14 @@ void execute(struct s16emu *emu, htab *symtab)
 			break;
 		case 4: /* cmp */
 			trace_print("cmp R%d,R%d\n", a, b);
-			SET_BIT(emu->reg[15], ccE, emu->reg[a] == emu->reg[b]);
-			SET_BIT(emu->reg[15], ccG, emu->reg[a] > emu->reg[b]);
-			SET_BIT(emu->reg[15], ccL, emu->reg[a] < emu->reg[b]);
+			SET_BIT(emu->reg[15], BIT_ccE, emu->reg[a] == emu->reg[b]);
+			SET_BIT(emu->reg[15], BIT_ccG, emu->reg[a] > emu->reg[b]);
+			SET_BIT(emu->reg[15], BIT_ccL, emu->reg[a] < emu->reg[b]);
 
 			/* FIXME: this assumes two's compliment representation by host */
-			SET_BIT(emu->reg[15], ccg,
+			SET_BIT(emu->reg[15], BIT_ccg,
 				(int16_t) emu->reg[a] > (int16_t) emu->reg[b]);
-			SET_BIT(emu->reg[15], ccl,
+			SET_BIT(emu->reg[15], BIT_ccl,
 				(int16_t) emu->reg[a] < (int16_t) emu->reg[b]);
 			break;
 		case 5: /* cmplt */

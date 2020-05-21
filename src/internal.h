@@ -24,6 +24,31 @@ struct s16emu {
 };
 
 /*
+ * Instruction decoding macros
+ */
+
+#define INSN_OP(insn) (insn >> 12 & 0xf)
+#define INSN_RD(insn) (insn >> 8 & 0xf)
+#define INSN_RA(insn) (insn >> 4 & 0xf)
+#define INSN_RB(insn) (insn & 0xf)
+
+/*
+ * Flags stored in R15
+ */
+
+#define BIT_ccG 0 /* Unsigned greater than */
+#define BIT_ccg 1 /* Signed greater than */
+#define BIT_ccE 2 /* Equal to */
+#define BIT_ccl 3 /* Signed less than */
+#define BIT_ccL 4 /* Unsigned less than */
+#define BIT_ccV 5 /* Unsigned overflow */
+#define BIT_ccv 6 /* Signed overflow */
+#define BIT_ccC 7 /* Carry prop */
+
+#define SET_BIT(x, bit, val) \
+	if (val) { x |= (0x8000 >> bit); } else { x &= ~(0x8000 >> bit); }
+
+/*
  * TC math emulator
  */
 
