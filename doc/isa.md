@@ -13,14 +13,14 @@ defined, and not exposed to software in any way whatsoever. Bits of words are
 numbered in PowerPC style, aka the most significant bit is bit 0, and the least significant bit is bit 15. Signed integers are represented in 16-bit two's
 complement.
 
-Registers are numbered R0 through R15, the register R0 always contains 0, and
-writes to it are discarded. Instruction that address memory use effective
-address operands in the following format: `Displacement[Ra]`. The address is caclulated
-by taking the Displacementlacement and adding the content of Ra to it. If said addition
-overflows the address bus it wraps around to 0, similar to the iAPX 86 series.
+Registers are numbered R0 through R15, the register R0 always contains 0 and
+writes to it are discarded. Instructions that address memory use effective
+addresses specified in the following format: Displacement[Ra]. The address is caclulated
+by taking the Displacement and adding the content of Ra to it. If said addition
+overflows, it wraps around to address 0.
 
 ## Flags
-The register R15 also functions as a flag output from arithmetic and compare
+The register R15 functions as a flag output from arithmetic and compare
 operations. The following flags are synonyms for the corresponding bit of R15:
 <table border=1>
 	<tr>
