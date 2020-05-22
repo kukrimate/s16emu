@@ -34,10 +34,27 @@ static _Bool dodebug = 0;
  */
 
 #define TRAP_EXIT  0
+#define TRAP_READ  1
 #define TRAP_WRITE 2
+
+static void trap_read(struct s16emu *emu, uint16_t a, uint16_t b)
+{
+	if ((uint32_t) a + b > RAM_WORDS) {
+		fprintf(stderr, "WARN: out of bounds trap read detected!!\n");
+		return;
+	}
+
+	while (b--)
+		emu->ram[a++] = getchar();
+}
 
 static void trap_write(struct s16emu *emu, uint16_t a, uint16_t b)
 {
+	if ((uint32_t) a + b > RAM_WORDS) {
+		fprintf(stderr, "WARN: out of bounds trap write detected!!\n");
+		return;
+	}
+
 	while (b--)
 		printf("%c", (int) emu->ram[a++]);
 }
@@ -120,6 +137,9 @@ void execute(struct s16emu *emu, htab *symtab)
 			switch (emu->reg[d]) {
 			case TRAP_EXIT:
 				return;
+			case TRAP_READ:
+				trap_read(emu, emu->reg[a], emu->reg[b]);
+				break;
 			case TRAP_WRITE:
 				trap_write(emu, emu->reg[a], emu->reg[b]);
 				break;
