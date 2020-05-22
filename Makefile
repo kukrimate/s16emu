@@ -1,13 +1,13 @@
 # Compiler flags
-CFLAGS  := -Ilib -D_GNU_SOURCE -std=c99 -Wpedantic -Wall -g
-LDFLAGS :=
+CFLAGS  := -Ilib -D_GNU_SOURCE -std=c99 -Wpedantic -Wall -O2 -g
+LDFLAGS := -g
 LIBS    :=
 
 # Object files
 OBJ := \
 	lib/dynarr.o \
 	lib/htab.o \
-	src/math.o \
+	src/alu.o \
 	src/emu.o
 
 

@@ -43,9 +43,9 @@ static void trap_write(struct s16emu *emu, uint16_t a, uint16_t b)
 }
 
 /*
- * Execute instruction
+ * Execute instruction with debugging features
  */
-void execute(struct s16emu *emu, htab *symtab)
+void execute_debug(struct s16emu *emu, htab *symtab)
 {
 	uint8_t op, d, a, b;
 
@@ -118,6 +118,7 @@ void execute(struct s16emu *emu, htab *symtab)
 				break;
 			}
 			break;
+
 		case 0xf: /* RX format */
 			emu->adr = emu->ram[emu->pc++];
 
@@ -183,12 +184,8 @@ void execute(struct s16emu *emu, htab *symtab)
 				emu->reg[d] = emu->pc;
 				emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
 				break;
-			default:
-				abort();
 			}
 			break;
-		default:
-			abort();
 		}
 
 		/* Enforce R0 = 0 */
@@ -202,6 +199,125 @@ void execute(struct s16emu *emu, htab *symtab)
 		}
 	}
 }
+
+/*
+ * Execute instructions without any debug features
+ */
+void execute_fast(struct s16emu *emu)
+{
+	uint8_t op, d, a, b;
+
+
+	for (;;) {
+		emu->ir = emu->ram[emu->pc++];
+
+		op = INSN_OP(emu->ir);
+		d = INSN_RD(emu->ir);
+		a = INSN_RA(emu->ir);
+		b = INSN_RB(emu->ir);
+
+		switch (op) {
+
+		case 0: /* add */
+			s16add(&emu->reg[d], emu->reg[a], emu->reg[b]);
+			break;
+
+		case 1: /* sub */
+			s16sub(&emu->reg[d], emu->reg[a], emu->reg[b]);
+			break;
+
+		case 2: /* mul */
+			s16mul(&emu->reg[d], emu->reg[a], emu->reg[b]);
+			break;
+
+		case 3: /* div */
+			s16div(&emu->reg[d], d != 15 ? &emu->reg[15] : NULL,
+				emu->reg[a], emu->reg[b]);
+			break;
+		case 4: /* cmp */
+			SET_BIT(emu->reg[15], BIT_ccE, emu->reg[a] == emu->reg[b]);
+			SET_BIT(emu->reg[15], BIT_ccG, emu->reg[a] > emu->reg[b]);
+			SET_BIT(emu->reg[15], BIT_ccL, emu->reg[a] < emu->reg[b]);
+
+			/* FIXME: this assumes two's complement representation by host */
+			SET_BIT(emu->reg[15], BIT_ccg,
+				(int16_t) emu->reg[a] > (int16_t) emu->reg[b]);
+			SET_BIT(emu->reg[15], BIT_ccl,
+				(int16_t) emu->reg[a] < (int16_t) emu->reg[b]);
+			break;
+		case 5: /* cmplt */
+			emu->reg[d] = (int16_t) emu->reg[a] < (int16_t) emu->reg[b];
+			break;
+		case 6: /* cmpeq */
+			emu->reg[d] = emu->reg[a] == emu->reg[b];
+			break;
+		case 7: /* cmpgt */
+			emu->reg[d] = (int16_t) emu->reg[a] > (int16_t) emu->reg[b];
+			break;
+		case 0xd: /* trap */
+			switch (emu->reg[d]) {
+			case TRAP_EXIT:
+				return;
+			case TRAP_WRITE:
+				trap_write(emu, emu->reg[a], emu->reg[b]);
+				break;
+			}
+			break;
+		case 0xf: /* RX format */
+			emu->adr = emu->ram[emu->pc++];
+
+			switch (b) {
+			/* NOTE: doc is silent on the issue,
+				but I do iAPX86 style wraparound for address overflows */
+
+			case 0: /* lea */
+				emu->reg[d] = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				break;
+
+			case 1: /* load */
+				emu->reg[d] = emu->ram[(emu->adr + emu->reg[a]) % RAM_WORDS];
+				break;
+
+			case 2: /* store */
+				emu->ram[(emu->adr +  emu->reg[a]) % RAM_WORDS] = emu->reg[d];
+				break;
+
+			case 3: /* jump */
+				emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				break;
+
+			/* NOTE: gotta love PowerPC bit numbering */
+
+			case 4: /* jumpc0 */
+				if (!(emu->reg[15] & (0x8000 >> d)))
+					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				break;
+			case 5: /* jumpc1 */
+				if (emu->reg[15] & (0x8000 >> d))
+					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				break;
+
+			case 6: /* jumpf */
+				if (!emu->reg[d])
+					emu->pc = (emu->adr +  emu->reg[a]) % RAM_WORDS;
+				break;
+			case 7: /* jumpt */
+				if (emu->reg[d])
+					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				break;
+			case 8: /* jal */
+				emu->reg[d] = emu->pc;
+				emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				break;
+			}
+			break;
+		}
+
+		/* Enforce R0 = 0 */
+		emu->reg[0] = 0;
+	}
+}
+
 
 /*
  * Load program into RAM
@@ -316,6 +432,13 @@ err:
 	return -1;
 }
 
+#include <signal.h>
+
+static void alarm_handler(int signo)
+{
+	exit(0);
+}
+
 int main(int argc, char *argv[])
 {
 	int opt;
@@ -325,6 +448,8 @@ int main(int argc, char *argv[])
 	ssize_t prog_size;
 
 	htab symtab;
+
+	arg_sym = NULL;
 
 	while (-1 != (opt = getopt(argc, argv, "htds:")))
 		switch (opt) {
@@ -360,11 +485,18 @@ int main(int argc, char *argv[])
 	}
 	printf("Loaded %ld word program!\n", prog_size);
 
+	signal(SIGALRM, alarm_handler);
+	alarm(10);
+
 	if (arg_sym) {
-		execute(emu, &symtab);
+		execute_debug(emu, &symtab);
 		htab_del(&symtab, 1);
 	} else {
-		execute(emu, NULL);
+		for (;;) {
+			load(argv[optind], emu->ram, RAM_WORDS);
+			emu->pc = 0;
+			execute_fast(emu);
+		}
 	}
 
 	free(emu);

@@ -5,22 +5,20 @@
 #include <stdint.h>
 #include "internal.h"
 
-#define S16_NEG(x) ((s16word) ~x)
-
 /*
  * Add two words
  */
-void s16add(s16word *r, s16word a, s16word b)
+void s16add(s16word *d, s16word a, s16word b)
 {
-	*r = a + b;
+	*d = a + b;
 }
 
 /*
  * Calculate "a - b" by computing the TC of b and adding
  */
-void s16sub(s16word *r, s16word a, s16word b)
+void s16sub(s16word *d, s16word a, s16word b)
 {
-	*r = a + (s16word) ~b + 1;
+	*d = a + (s16word) ~b + 1;
 }
 
 /*
@@ -38,7 +36,7 @@ static int s16wordtoint(s16word x)
 /*
  * Convert a signed integer to Sigma16 TC word
  */
-static s16word intotos16word(int x)
+static s16word inttos16word(int x)
 {
 
 	if (x < 0) {
@@ -53,7 +51,7 @@ static s16word intotos16word(int x)
  */
 void s16mul(s16word *r, s16word a, s16word b)
 {
-	*r = intotos16word(s16wordtoint(a) * s16wordtoint(b));
+	*r = inttos16word(s16wordtoint(a) * s16wordtoint(b));
 }
 
 /*
@@ -76,8 +74,7 @@ void s16div(s16word *q, s16word *r, s16word a, s16word b)
 	if (i_q < 0 && i_a % i_b) /* Emulate floor division */
 		--i_q;
 
-	if (q)
-		*q = intotos16word(i_q);
-	if (r)
-		*r = intotos16word(a - b * i_q);
+	*q = inttos16word(i_q);
+	if (r) /* NOTE: we need to support not caclulating a % b */
+		*r = inttos16word(i_a - i_b * i_q);
 }
