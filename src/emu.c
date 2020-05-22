@@ -432,13 +432,6 @@ err:
 	return -1;
 }
 
-#include <signal.h>
-
-static void alarm_handler(int signo)
-{
-	exit(0);
-}
-
 int main(int argc, char *argv[])
 {
 	int opt;
@@ -460,6 +453,7 @@ int main(int argc, char *argv[])
 			dotrace = 1;
 			break;
 		case 'd':
+			dotrace = 1; /* -d implies -t */
 			dodebug = 1;
 			break;
 		case 'h':
@@ -485,18 +479,11 @@ int main(int argc, char *argv[])
 	}
 	printf("Loaded %ld word program!\n", prog_size);
 
-	signal(SIGALRM, alarm_handler);
-	alarm(10);
-
-	if (arg_sym) {
-		execute_debug(emu, &symtab);
+	if (dodebug || dotrace) {
+		execute_debug(emu, arg_sym ? &symtab : NULL);
 		htab_del(&symtab, 1);
 	} else {
-		for (;;) {
-			load(argv[optind], emu->ram, RAM_WORDS);
-			emu->pc = 0;
-			execute_fast(emu);
-		}
+		execute_fast(emu);
 	}
 
 	free(emu);
