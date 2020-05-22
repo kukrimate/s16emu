@@ -21,7 +21,8 @@ overflows, it wraps around to address 0.
 
 ## Flags
 The register R15 functions as a flag output from arithmetic and compare
-operations. The following flags are synonyms for the corresponding bit of R15:
+operations. Please note that if R15 is the destination register, than flags are
+**not** set. The following flags are synonyms for the corresponding bit of R15:
 <table border=1>
 	<tr>
 		<td>Flag</td>

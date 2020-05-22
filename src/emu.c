@@ -77,8 +77,7 @@ void execute(struct s16emu *emu, htab *symtab)
 			break;
 		case 3: /* div */
 			trace_print("div R%d,R%d,R%d\n", d, a, b);
-			s16div(&emu->reg[d], d != 15 ? &emu->reg[15] : NULL,
-				emu->reg[a], emu->reg[b]);
+			s16div(&emu->reg[d], &emu->reg[15], emu->reg[a], emu->reg[b]);
 			break;
 		case 4: /* cmp */
 			trace_print("cmp R%d,R%d\n", a, b);
@@ -95,6 +94,26 @@ void execute(struct s16emu *emu, htab *symtab)
 		case 7: /* cmpgt */
 			trace_print("cmpgt R%d,R%d,R%d\n", d, a, b);
 			s16cmpgt(&emu->reg[d], emu->reg[a], emu->reg[b]);
+			break;
+		case 8: /* inv */
+			trace_print("inv R%d,R%d\n", d, a);
+			emu->reg[d] = (uint16_t) ~emu->reg[a];
+			break;
+		case 9: /* and */
+			trace_print("and R%d,R%d,R%d\n", d, a, b);
+			emu->reg[d] = emu->reg[a] & emu->reg[b];
+			break;
+		case 0xa: /* or */
+			trace_print("or R%d,R%d,R%d\n", d, a, b);
+			emu->reg[d] = emu->reg[a] | emu->reg[b];
+			break;
+		case 0xb: /* xor */
+			trace_print("xor R%d,R%d,R%d\n", d, a, b);
+			emu->reg[d] = emu->reg[a] ^ emu->reg[b];
+			break;
+		case 0xc: /* addc */
+			trace_print("addc R%d,R%d,R%d\n", d, a, b);
+			s16addc(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
 		case 0xd: /* trap */
 			trace_print("trap R%d,R%d,R%d\n", d, a, b);

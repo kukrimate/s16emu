@@ -53,3 +53,4 @@ void s16div(uint16_t *q, uint16_t *r, uint16_t a, uint16_t b);
 void s16cmp(uint16_t *f, uint16_t a, uint16_t b);
 void s16cmplt(uint16_t *d, uint16_t a, uint16_t b);
 void s16cmpgt(uint16_t *d, uint16_t a, uint16_t b);
+void s16addc(uint16_t *f, uint16_t *d, uint16_t a, uint16_t b);

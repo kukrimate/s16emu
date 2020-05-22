@@ -38,10 +38,11 @@ void s16add(uint16_t *f, uint16_t *d, uint16_t a, uint16_t b)
 {
 	*d = a + b;
 
+	if (f == d) /* Do not set flags if f == d */
+		return;
 	/* Unsigned overflow + carry propagation */
 	SET_BIT(*f, BIT_ccV, *d < a || *d < b);
 	SET_BIT(*f, BIT_ccC, *d < a || *d < b);
-
 	/* Signed overflow */
 	SET_BIT(*f, BIT_ccv,
 		!(S16_SIGN(a) ^ S16_SIGN(b)) && (S16_SIGN(a) ^ S16_SIGN(*d)));
@@ -65,6 +66,8 @@ void s16mul(uint16_t *f, uint16_t *d, uint16_t a, uint16_t b)
 	tmp = tosigint(a) * tosigint(b);
 	*d = fromsigint(tmp);
 
+	if (f == d) /* Do not set flags if f == d */
+		return;
 	/* Signed overflow bit */
 	SET_BIT(*f, BIT_ccv, tmp & 0xffff0000);
 }
@@ -81,12 +84,12 @@ void s16div(uint16_t *q, uint16_t *r, uint16_t a, uint16_t b)
 	i_b = tosigint(b);
 
 	i_q	= i_a / i_b;
-
 	if (i_q < 0 && i_a % i_b) /* Emulate floor division */
 		--i_q;
 
 	*q = fromsigint(i_q);
-	if (r) /* NOTE: we need to support not caclulating a % b */
+
+	if (q != r) /* Do not overwrite quotient */
 		*r = fromsigint(i_a - i_b * i_q);
 }
 
@@ -104,7 +107,6 @@ void s16cmp(uint16_t *f, uint16_t a, uint16_t b)
 	SET_BIT(*f, BIT_ccE, a == b);
 	SET_BIT(*f, BIT_ccG, a > b);
 	SET_BIT(*f, BIT_ccL, a < b);
-
 	/* Signed comparison */
 	SET_BIT(*f, BIT_ccg, i_a > i_b);
 	SET_BIT(*f, BIT_ccl, i_a < i_b);
@@ -136,4 +138,23 @@ void s16cmpgt(uint16_t *d, uint16_t a, uint16_t b)
 	i_b = tosigint(b);
 
 	*d = i_a > i_b;
+}
+
+/*
+ * Add two words plus R15.ccC
+ */
+void s16addc(uint16_t *f, uint16_t *d, uint16_t a, uint16_t b)
+{
+	*d = a + b;
+	if (0 < GET_BIT(*f, BIT_ccC))
+		++*d;
+
+	if (f == d) /* Do not set flags if f == d */
+		return;
+	/* Unsigned overflow + carry propagation */
+	SET_BIT(*f, BIT_ccV, *d < a || *d < b);
+	SET_BIT(*f, BIT_ccC, *d < a || *d < b);
+	/* Signed overflow */
+	SET_BIT(*f, BIT_ccv,
+		!(S16_SIGN(a) ^ S16_SIGN(b)) && (S16_SIGN(a) ^ S16_SIGN(*d)));
 }
