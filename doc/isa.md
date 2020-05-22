@@ -217,6 +217,40 @@ counter to said address.
 address and set the program counter to set address.
 - This instruction does not set any flags.
 
+## Aliases
+The assembler supports the following instruction aliases:
+<table border=1>
+	<tr>
+		<td>Alias</td>
+		<td>Target</td>
+	</tr>
+	<tr>
+		<td>jumplt Ra[Displacement]</td>
+		<td>jumpc1 R3,Ra[Displacement]</td>
+	</tr>
+	<tr>
+		<td>jumple Ra[Displacement]</td>
+		<td>jumpc0 R1,Ra[Displacement]</td>
+	</tr>
+	<tr>
+		<td>jumpne Ra[Displacement]</td>
+		<td>jumpc0 R2,Ra[Displacement]</td>
+	</tr>
+	<tr>
+		<td>jumpeq Ra[Displacement]</td>
+		<td>jumpc1 R2,Ra[Displacement]</td>
+	</tr>
+	<tr>
+		<td>jumpge Ra[Displacement]</td>
+		<td>jumpc0 R3,Ra[Displacement]</td>
+	</tr>
+	<tr>
+		<td>jumpgt Ra[Displacement]</td>
+		<td>jumpc1 R1,Ra[Displacement]</td>
+	</tr>
+</table>
+
+
 ## Encoding types
 Sigma16 supports the following instruction encodings. Please not that each
 column under a word represent a nibble.
