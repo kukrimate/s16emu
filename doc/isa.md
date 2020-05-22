@@ -252,8 +252,7 @@ The assembler supports the following instruction aliases:
 
 
 ## Encoding types
-Sigma16 supports the following instruction encodings. Please not that each
-column under a word represent a nibble.
+Sigma16 supports the following instruction encodings.
 <table border=1>
 	<tr>
 		<td>Name</td>

@@ -154,7 +154,7 @@ insn_size = {
 # Instruction functions
 insn_func = {
 	"data"  : encode_const,
-	"add"   : lambda x: encode_rrr(0x0, x,),
+	"add"   : lambda x: encode_rrr(0x0, x),
 	"sub"   : lambda x: encode_rrr(0x1, x),
 	"mul"   : lambda x: encode_rrr(0x2, x),
 	"div"   : lambda x: encode_rrr(0x3, x),

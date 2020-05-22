@@ -1,0 +1,28 @@
+# Use MinGW-w64
+CC      := x86_64-w64-mingw32-gcc
+
+# Compiler flags (need GNU99 for include_next :/)
+CFLAGS  := -Ilib -Ilib/winshim -std=gnu99 -Wall -O2 -g
+LDFLAGS := -g
+LIBS    :=
+
+# Object files
+OBJ := \
+	lib/winshim/winshim.o \
+	lib/dynarr.o \
+	lib/htab.o \
+	src/alu.o \
+	src/emu.o
+
+.PHONY: all
+all: s16emu.exe
+
+s16emu.exe: $(OBJ)
+	$(CC) $(LDFLAGS) $(OBJ) -o $@ $(LIBS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $^ -o $@
+
+.PHONY: clean
+clean:
+	rm -f $(OBJ) s16emu.exe

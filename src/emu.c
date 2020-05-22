@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <fcntl.h>
 #include <unistd.h>
 
 #include "dynarr.h"
@@ -220,18 +219,18 @@ void execute(struct s16emu *emu, htab *symtab)
  */
 ssize_t load(char *path, uint16_t *ram, size_t ram_words)
 {
-	int fd;
+	FILE *file;
 	uint16_t *ptr;
 	uint8_t buf[2];
 
-	fd = open(path, O_RDONLY);
-	if (-1 == fd) {
+	file = fopen(path, "rb");
+	if (!file) {
 		perror(path);
 		return -1;
 	}
 
 	ptr = ram;
-	while (0 < read(fd, buf, sizeof(buf))) {
+	while (0 < fread(buf, sizeof(buf), 1, file)) {
 		/* Make sure the program actually fits into RAM */
 		if (ptr >= ram + ram_words) {
 			fprintf(stderr, "Program too big!\n");
@@ -242,10 +241,10 @@ ssize_t load(char *path, uint16_t *ram, size_t ram_words)
 		*ptr++ = buf[0] << 8 | buf[1];
 	}
 
-	close(fd);
+	fclose(file);
 	return ptr - ram;
 err:
-	close(fd);
+	fclose(file);
 	return -1;
 }
 
@@ -276,14 +275,14 @@ int addsym(char *line, htab *symtab)
  */
 int load_symtab(char *path, htab *symtab)
 {
-	int fd;
+	FILE *file;
 	dynarr line;
 
 	ssize_t len;
 	char buf[4096], *p;
 
-	fd = open(path, O_RDONLY);
-	if (-1 == fd) {
+	file = fopen(path, "rb");
+	if (!file) {
 		perror(path);
 		return -1;
 	}
@@ -292,7 +291,7 @@ int load_symtab(char *path, htab *symtab)
 	htab_new(symtab, 32);
 
 	for (;;) {
-		len = read(fd, buf, sizeof(buf));
+		len = fread(buf, sizeof(buf), 1, file);
 		if (-1 == len)
 			goto err;
 
@@ -318,11 +317,12 @@ int load_symtab(char *path, htab *symtab)
 		}
 	}
 
+	fclose(file);
 	dynarr_free(&line);
 	return 0;
 err:
 	perror(path);
-	close(fd);
+	fclose(file);
 	dynarr_free(&line);
 	htab_del(symtab, 1);
 	return -1;
@@ -373,7 +373,7 @@ int main(int argc, char *argv[])
 		free(emu);
 		return 1;
 	}
-	printf("Loaded %ld word program!\n", prog_size);
+	printf("Loaded %u word program!\n", (unsigned) prog_size);
 
 	execute(emu, arg_sym ? &symtab : NULL);
 
