@@ -45,7 +45,7 @@ static void trap_write(struct s16emu *emu, uint16_t a, uint16_t b)
 /*
  * Execute instruction with debugging features
  */
-void execute_debug(struct s16emu *emu, htab *symtab)
+void execute(struct s16emu *emu, htab *symtab)
 {
 	uint8_t op, d, a, b;
 
@@ -63,22 +63,18 @@ void execute_debug(struct s16emu *emu, htab *symtab)
 		b = INSN_RB(emu->ir);
 
 		switch (op) {
-
 		case 0: /* add */
 			trace_print("add R%d,R%d,R%d\n", d, a, b);
-			s16add(&emu->reg[d], emu->reg[a], emu->reg[b]);
+			s16add(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
-
 		case 1: /* sub */
 			trace_print("sub R%d,R%d,R%d\n", d, a, b);
-			s16sub(&emu->reg[d], emu->reg[a], emu->reg[b]);
+			s16sub(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
-
 		case 2: /* mul */
 			trace_print("mul R%d,R%d,R%d\n", d, a, b);
-			s16mul(&emu->reg[d], emu->reg[a], emu->reg[b]);
+			s16mul(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
-
 		case 3: /* div */
 			trace_print("div R%d,R%d,R%d\n", d, a, b);
 			s16div(&emu->reg[d], d != 15 ? &emu->reg[15] : NULL,
@@ -86,19 +82,11 @@ void execute_debug(struct s16emu *emu, htab *symtab)
 			break;
 		case 4: /* cmp */
 			trace_print("cmp R%d,R%d\n", a, b);
-			SET_BIT(emu->reg[15], BIT_ccE, emu->reg[a] == emu->reg[b]);
-			SET_BIT(emu->reg[15], BIT_ccG, emu->reg[a] > emu->reg[b]);
-			SET_BIT(emu->reg[15], BIT_ccL, emu->reg[a] < emu->reg[b]);
-
-			/* FIXME: this assumes two's complement representation by host */
-			SET_BIT(emu->reg[15], BIT_ccg,
-				(int16_t) emu->reg[a] > (int16_t) emu->reg[b]);
-			SET_BIT(emu->reg[15], BIT_ccl,
-				(int16_t) emu->reg[a] < (int16_t) emu->reg[b]);
+			s16cmp(&emu->reg[15], emu->reg[a], emu->reg[b]);
 			break;
 		case 5: /* cmplt */
 			trace_print("cmplt R%d,R%d,R%d\n", d, a, b);
-			emu->reg[d] = (int16_t) emu->reg[a] < (int16_t) emu->reg[b];
+			s16cmplt(&emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
 		case 6: /* cmpeq */
 			trace_print("cmpeq R%d,R%d,R%d\n", d, a, b);
@@ -106,7 +94,7 @@ void execute_debug(struct s16emu *emu, htab *symtab)
 			break;
 		case 7: /* cmpgt */
 			trace_print("cmpgt R%d,R%d,R%d\n", d, a, b);
-			emu->reg[d] = (int16_t) emu->reg[a] > (int16_t) emu->reg[b];
+			s16cmpgt(&emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
 		case 0xd: /* trap */
 			trace_print("trap R%d,R%d,R%d\n", d, a, b);
@@ -118,7 +106,6 @@ void execute_debug(struct s16emu *emu, htab *symtab)
 				break;
 			}
 			break;
-
 		case 0xf: /* RX format */
 			emu->adr = emu->ram[emu->pc++];
 
@@ -126,63 +113,52 @@ void execute_debug(struct s16emu *emu, htab *symtab)
 				adrsym = htab_get(symtab, emu->adr);
 			else
 				adrsym = NULL;
-
 			if (!adrsym) {
 				snprintf(adrbuf, sizeof(adrbuf), "%04x", emu->adr);
 				adrsym = adrbuf;
 			}
 
 			switch (b) {
-			/* NOTE: doc is silent on the issue,
-				but I do iAPX86 style wraparound for address overflows */
-
 			case 0: /* lea */
 				trace_print("lea R%d,%s[R%d]\n", d, adrsym, a);
-				emu->reg[d] = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				emu->reg[d] = emu->adr + emu->reg[a];
 				break;
-
 			case 1: /* load */
 				trace_print("load R%d,%s[R%d]\n", d, adrsym, a);
-				emu->reg[d] = emu->ram[(emu->adr + emu->reg[a]) % RAM_WORDS];
+				emu->reg[d] = emu->ram[emu->adr + emu->reg[a]];
 				break;
-
 			case 2: /* store */
 				trace_print("store R%d,%s[R%d]\n", d, adrsym, a);
-				emu->ram[(emu->adr +  emu->reg[a]) % RAM_WORDS] = emu->reg[d];
+				emu->ram[emu->adr + emu->reg[a]] = emu->reg[d];
 				break;
-
 			case 3: /* jump */
 				trace_print("jump R%d,%s[R%d]\n", d, adrsym, a);
-				emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				emu->pc = emu->adr + emu->reg[a];
 				break;
-
-			/* NOTE: gotta love PowerPC bit numbering */
-
 			case 4: /* jumpc0 */
 				trace_print("jumpc0 R%d,%s[R%d]\n", d, adrsym, a);
-				if (!(emu->reg[15] & (0x8000 >> d)))
-					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				if (!GET_BIT(emu->reg[15], d))
+					emu->pc = emu->adr + emu->reg[a];
 				break;
 			case 5: /* jumpc1 */
 				trace_print("jumpc1 R%d,%s[R%d]\n", d, adrsym, a);
-				if (emu->reg[15] & (0x8000 >> d))
-					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				if (GET_BIT(emu->reg[15], d))
+					emu->pc = emu->adr + emu->reg[a];
 				break;
-
 			case 6: /* jumpf */
 				trace_print("jumpf R%d,%s[R%d]\n", d, adrsym, a);
 				if (!emu->reg[d])
-					emu->pc = (emu->adr +  emu->reg[a]) % RAM_WORDS;
+					emu->pc = emu->adr +  emu->reg[a];
 				break;
 			case 7: /* jumpt */
 				trace_print("jumpt R%d,%s[R%d]\n", d, adrsym, a);
 				if (emu->reg[d])
-					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
+					emu->pc = emu->adr + emu->reg[a];
 				break;
 			case 8: /* jal */
 				trace_print("jal R%d,%s[R%d]\n", d, adrsym, a);
 				emu->reg[d] = emu->pc;
-				emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
+				emu->pc = emu->adr + emu->reg[a];
 				break;
 			}
 			break;
@@ -192,132 +168,13 @@ void execute_debug(struct s16emu *emu, htab *symtab)
 		emu->reg[0] = 0;
 
 		if (dodebug) {
-			getchar();
 			for (size_t i = 0; i < REG_COUNT; ++i) {
 				trace_print("R%ld\t: %04x\n", i, emu->reg[i]);
 			}
+			getchar();
 		}
 	}
 }
-
-/*
- * Execute instructions without any debug features
- */
-void execute_fast(struct s16emu *emu)
-{
-	uint8_t op, d, a, b;
-
-
-	for (;;) {
-		emu->ir = emu->ram[emu->pc++];
-
-		op = INSN_OP(emu->ir);
-		d = INSN_RD(emu->ir);
-		a = INSN_RA(emu->ir);
-		b = INSN_RB(emu->ir);
-
-		switch (op) {
-
-		case 0: /* add */
-			s16add(&emu->reg[d], emu->reg[a], emu->reg[b]);
-			break;
-
-		case 1: /* sub */
-			s16sub(&emu->reg[d], emu->reg[a], emu->reg[b]);
-			break;
-
-		case 2: /* mul */
-			s16mul(&emu->reg[d], emu->reg[a], emu->reg[b]);
-			break;
-
-		case 3: /* div */
-			s16div(&emu->reg[d], d != 15 ? &emu->reg[15] : NULL,
-				emu->reg[a], emu->reg[b]);
-			break;
-		case 4: /* cmp */
-			SET_BIT(emu->reg[15], BIT_ccE, emu->reg[a] == emu->reg[b]);
-			SET_BIT(emu->reg[15], BIT_ccG, emu->reg[a] > emu->reg[b]);
-			SET_BIT(emu->reg[15], BIT_ccL, emu->reg[a] < emu->reg[b]);
-
-			/* FIXME: this assumes two's complement representation by host */
-			SET_BIT(emu->reg[15], BIT_ccg,
-				(int16_t) emu->reg[a] > (int16_t) emu->reg[b]);
-			SET_BIT(emu->reg[15], BIT_ccl,
-				(int16_t) emu->reg[a] < (int16_t) emu->reg[b]);
-			break;
-		case 5: /* cmplt */
-			emu->reg[d] = (int16_t) emu->reg[a] < (int16_t) emu->reg[b];
-			break;
-		case 6: /* cmpeq */
-			emu->reg[d] = emu->reg[a] == emu->reg[b];
-			break;
-		case 7: /* cmpgt */
-			emu->reg[d] = (int16_t) emu->reg[a] > (int16_t) emu->reg[b];
-			break;
-		case 0xd: /* trap */
-			switch (emu->reg[d]) {
-			case TRAP_EXIT:
-				return;
-			case TRAP_WRITE:
-				trap_write(emu, emu->reg[a], emu->reg[b]);
-				break;
-			}
-			break;
-		case 0xf: /* RX format */
-			emu->adr = emu->ram[emu->pc++];
-
-			switch (b) {
-			/* NOTE: doc is silent on the issue,
-				but I do iAPX86 style wraparound for address overflows */
-
-			case 0: /* lea */
-				emu->reg[d] = (emu->adr + emu->reg[a]) % RAM_WORDS;
-				break;
-
-			case 1: /* load */
-				emu->reg[d] = emu->ram[(emu->adr + emu->reg[a]) % RAM_WORDS];
-				break;
-
-			case 2: /* store */
-				emu->ram[(emu->adr +  emu->reg[a]) % RAM_WORDS] = emu->reg[d];
-				break;
-
-			case 3: /* jump */
-				emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
-				break;
-
-			/* NOTE: gotta love PowerPC bit numbering */
-
-			case 4: /* jumpc0 */
-				if (!(emu->reg[15] & (0x8000 >> d)))
-					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
-				break;
-			case 5: /* jumpc1 */
-				if (emu->reg[15] & (0x8000 >> d))
-					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
-				break;
-
-			case 6: /* jumpf */
-				if (!emu->reg[d])
-					emu->pc = (emu->adr +  emu->reg[a]) % RAM_WORDS;
-				break;
-			case 7: /* jumpt */
-				if (emu->reg[d])
-					emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
-				break;
-			case 8: /* jal */
-				emu->reg[d] = emu->pc;
-				emu->pc = (emu->adr + emu->reg[a]) % RAM_WORDS;
-				break;
-			}
-			break;
-		}
-
-		/* Enforce R0 = 0 */
-		emu->reg[0] = 0;
-	}
-}
-
 
 /*
  * Load program into RAM
@@ -479,13 +336,10 @@ int main(int argc, char *argv[])
 	}
 	printf("Loaded %ld word program!\n", prog_size);
 
-	if (dodebug || dotrace) {
-		execute_debug(emu, arg_sym ? &symtab : NULL);
-		htab_del(&symtab, 1);
-	} else {
-		execute_fast(emu);
-	}
+	execute(emu, arg_sym ? &symtab : NULL);
 
+	if (arg_sym)
+		htab_del(&symtab, 1);
 	free(emu);
 	return 0;
 

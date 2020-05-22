@@ -66,7 +66,7 @@ operations. The following flags are synonyms for the corresponding bit of R15:
 	<tr>
 		<td>ccC</td>
 		<td>7</td>
-		<td>Carry propagation</td>
+		<td>Carry propagation (always matches ccV)</td>
 	</tr>
 </table>
 

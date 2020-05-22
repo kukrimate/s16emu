@@ -1,12 +1,3 @@
-
-/*
- * Sigma16 word
- */
-typedef uint16_t s16word;
-
-#define S16_WORDSIZE sizeof(s16word)
-#define S16_MAXBIT 0x8000
-
 /*
  * Emulator context
  */
@@ -16,11 +7,11 @@ typedef uint16_t s16word;
 
 struct s16emu {
 	/* Decode registers */
-	s16word pc, ir, adr;
+	uint16_t pc, ir, adr;
 	/* General purpose registers */
-	s16word reg[REG_COUNT];
+	uint16_t reg[REG_COUNT];
 	/* RAM */
-	s16word ram[RAM_WORDS];
+	uint16_t ram[RAM_WORDS];
 };
 
 /*
@@ -52,10 +43,13 @@ struct s16emu {
 	((x & (0x8000 >> bit)) > 0)
 
 /*
- * TC math emulator
+ * Two's complement arithmetic emulator
  */
 
-void s16add(s16word *r, s16word a, s16word b);
-void s16sub(s16word *r, s16word a, s16word b);
-void s16mul(s16word *r, s16word a, s16word b);
-void s16div(s16word *q, s16word *r, s16word a, s16word b);
+void s16add(uint16_t *f, uint16_t *d, uint16_t a, uint16_t b);
+void s16sub(uint16_t *f, uint16_t *d, uint16_t a, uint16_t b);
+void s16mul(uint16_t *f, uint16_t *d, uint16_t a, uint16_t b);
+void s16div(uint16_t *q, uint16_t *r, uint16_t a, uint16_t b);
+void s16cmp(uint16_t *f, uint16_t a, uint16_t b);
+void s16cmplt(uint16_t *d, uint16_t a, uint16_t b);
+void s16cmpgt(uint16_t *d, uint16_t a, uint16_t b);
