@@ -230,7 +230,7 @@ ssize_t load(char *path, uint16_t *ram, size_t ram_words)
 	}
 
 	ptr = ram;
-	while (0 < fread(buf, sizeof(buf), 1, file)) {
+	while (0 < fread(buf, 1, sizeof(buf), file)) {
 		/* Make sure the program actually fits into RAM */
 		if (ptr >= ram + ram_words) {
 			fprintf(stderr, "Program too big!\n");
@@ -291,7 +291,7 @@ int load_symtab(char *path, htab *symtab)
 	htab_new(symtab, 32);
 
 	for (;;) {
-		len = fread(buf, sizeof(buf), 1, file);
+		len = fread(buf, 1, sizeof(buf), file);
 		if (-1 == len)
 			goto err;
 
