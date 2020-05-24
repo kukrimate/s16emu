@@ -2,7 +2,6 @@
 # Sigma16 assembler in Python, supports the "standard" Sigma16 assembly syntax
 
 import argparse
-import sys
 import re
 from enum import Enum
 import struct
@@ -232,7 +231,7 @@ parser.add_argument('-s', metavar="OSYM", help="Output symbol table")
 args = parser.parse_args()
 
 # Assemble file
-with open(sys.argv[1]) as f:
+with open(args.IASM) as f:
 	code, symtab = assemble(tokenize(f.read()))
 
 if args.o:

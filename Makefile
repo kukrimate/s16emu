@@ -12,12 +12,21 @@ LIBS    :=
 # Object files
 OBJ := \
 	lib/dynarr.o \
-	lib/htab.o \
+	lib/htab_ui16.o \
 	src/alu.o \
 	src/emu.o
 
+ASM_OBJ := \
+	lib/dynarr.o \
+	lib/htab.o \
+	asm/insn.o \
+	asm/asm.o
+
 .PHONY: all
-all: s16emu
+all: s16asm s16emu
+
+s16asm: $(ASM_OBJ)
+	$(CC) $(LDFLAGS) $(ASM_OBJ) -o $@ $(LIBS)
 
 s16emu: $(OBJ)
 	$(CC) $(LDFLAGS) $(OBJ) -o $@ $(LIBS)

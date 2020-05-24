@@ -3,6 +3,7 @@
  * Author: Mate Kukri
  * License: ISC
  */
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include "dynarr.h"
@@ -62,6 +63,15 @@ void dynarr_addc(dynarr *x, char c)
 	((char *) x->buffer)[x->elem_cnt - 1] = c;
 }
 
+void dynarr_addw(dynarr *x, uint16_t w)
+{
+	++x->elem_cnt;
+	if (x->elem_cnt > x->slot_cnt)
+		dynarr_grow(x);
+
+	((uint16_t *) x->buffer)[x->elem_cnt - 1] = w;
+}
+
 void dynarr_addp(dynarr *x, void *p)
 {
 	++x->elem_cnt;
@@ -74,6 +84,11 @@ void dynarr_addp(dynarr *x, void *p)
 char dynarr_getc(dynarr *x, size_t i)
 {
 	return ((char *) x->buffer)[i];
+}
+
+uint16_t dynarr_getw(dynarr *x, size_t i)
+{
+	return ((uint16_t *) x->buffer)[i];
 }
 
 void *dynarr_getp(dynarr *x, size_t i)

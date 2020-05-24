@@ -40,6 +40,11 @@ void dynarr_get(dynarr *x, size_t i, size_t cnt, void *dest);
  */
 void dynarr_addc(dynarr *x, char c);
 /*
+ * Add a word
+ * NOTE: x->slot_siz must be sizeof(uint16_t)
+ */
+void dynarr_addw(dynarr *x, uint16_t w);
+/*
  * Add a pointer
  * NOTE: x->slot_siz must be sizeof(void *)
  */
@@ -49,6 +54,11 @@ void dynarr_addp(dynarr *x, void *p);
  * NOTE: x->slot_siz must be sizeof(char)
  */
 char dynarr_getc(dynarr *x, size_t i);
+/*
+ * Get the ith word
+ * NOTE: x->slot_siz must be sizeof(uint16_t)
+ */
+uint16_t dynarr_getw(dynarr *x, size_t i);
 /*
  * Return the ith pointer
  * NOTE: x->slot_siz must be sizeof(void *)

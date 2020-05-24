@@ -3,9 +3,9 @@
 
 typedef struct helem helem;
 struct helem {
-	uint16_t key;
-	char *val;
-	helem *nex;
+	char    *key;
+	uint16_t val;
+	helem   *nex;
 };
 
 typedef struct {
@@ -33,12 +33,12 @@ void htab_del(htab *x, int d);
  * Insert a key/value pair into a hashtable, if d is set
  * than key/values will be free'd before overwriting
  */
-void htab_put(htab *x, uint16_t key, char *val, int d);
+void htab_put(htab *x, char *key, uint16_t val, int d);
 
 /*
  * Retrieve a value mapped to a given key,
  * if the key is not in the table NULL is returned
  */
-char *htab_get(htab *x, uint16_t key);
+uint16_t htab_get(htab *x, char *key);
 
 #endif

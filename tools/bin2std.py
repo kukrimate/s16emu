@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Convert a binary to a fake assembler file
+# Convert a binary to a fake "standard" assembler file
 import sys
 import struct
 

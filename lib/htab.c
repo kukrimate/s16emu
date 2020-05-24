@@ -3,29 +3,30 @@
  * Auhor: Mate Kukri
  * License: ISC
  */
-#include <stdlib.h>
+
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include "htab.h"
 
-// static size_t djb2_hash(char *str)
-// {
-// 	size_t r;
+static size_t djb2_hash(char *str)
+{
+	size_t r;
 
-// 	r = 5381;
-// 	for (; *str; ++str)
-// 		r = (r << 5) + r + *str;
-// 	return r;
-// }
+	r = 5381;
+	for (; *str; ++str)
+		r = (r << 5) + r + *str;
+	return r;
+}
 
 /*
  * Put key/value paris into a hashtable *without* checking for key overwrites
  */
-static void htab_putuniq(htab *x, uint16_t key, char *val)
+static void htab_putuniq(htab *x, char *key, uint16_t val)
 {
 	helem **e;
 
-	e = x->buffer + key % x->bucket_count;
+	e = x->buffer + djb2_hash(key) % x->bucket_count;
 	if (!*e)
 		++x->used_count;
 	else
@@ -76,7 +77,7 @@ void htab_del(htab *x, int d)
 	for (b = x->buffer; b < x->buffer + x->bucket_count; ++b)
 		for (e = *b; e; ) {
 			if (d) {
-				free(e->val);
+				free(e->key);
 			}
 			t = e->nex;
 			free(e);
@@ -86,22 +87,22 @@ void htab_del(htab *x, int d)
 }
 
 
-void htab_put(htab *x, uint16_t key, char *val, int d)
+void htab_put(htab *x, char *key, uint16_t val, int d)
 {
 	helem **e;
 
 	if (x->used_count > x->bucket_count * 3 / 4)
 		htab_grow(x, x->bucket_count * 2);
 
-	e = x->buffer + key % x->bucket_count;
+	e = x->buffer + djb2_hash(key) % x->bucket_count;
 
 	if (!*e)
 		++x->used_count;
 	else
 		for (; *e; e = &(*e)->nex)
-			if ((*e)->key == key) {
+			if (!strcmp((*e)->key, key)) {
 				if (d) {
-					free((*e)->val);
+					free((*e)->key);
 				}
 				goto insert;
 			}
@@ -116,14 +117,14 @@ insert:
 	(*e)->val = val;
 }
 
-char *htab_get(htab *x, uint16_t key)
+uint16_t htab_get(htab *x, char *key)
 {
 	helem **e;
 
-	e = x->buffer + key % x->bucket_count;
+	e = x->buffer + djb2_hash(key) % x->bucket_count;
 	for (; *e; e = &(*e)->nex)
-		if ((*e)->key == key)
+		if (!strcmp((*e)->key, key))
 			return (*e)->val;
 
-	return NULL;
+	return 0; /* FIXME: a non-existent key should somehow be signaled */
 }

@@ -1,3 +1,4 @@
 *.o
+s16asm
 s16emu
 prog

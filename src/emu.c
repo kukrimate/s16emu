@@ -7,7 +7,7 @@
 #include <unistd.h>
 
 #include "dynarr.h"
-#include "htab.h"
+#include "htab_ui16.h"
 
 #include "internal.h"
 
@@ -61,7 +61,7 @@ static void trap_write(struct s16emu *emu, uint16_t a, uint16_t b)
 /*
  * Execute instruction with debugging features
  */
-void execute(struct s16emu *emu, htab *symtab)
+void execute(struct s16emu *emu, htab_ui16 *symtab)
 {
 	uint8_t op, d, a, b;
 
@@ -148,7 +148,7 @@ void execute(struct s16emu *emu, htab *symtab)
 			emu->adr = emu->ram[emu->pc++];
 
 			if (symtab)
-				adrsym = htab_get(symtab, emu->adr);
+				adrsym = htab_ui16_get(symtab, emu->adr);
 			else
 				adrsym = NULL;
 			if (!adrsym) {
@@ -251,7 +251,7 @@ err:
 /*
  * Add a single symbol to the table
  */
-int addsym(char *line, htab *symtab)
+int addsym(char *line, htab_ui16 *symtab)
 {
 	char *sym, *p;
 	uint16_t addr;
@@ -266,14 +266,14 @@ int addsym(char *line, htab *symtab)
 	sym  = strndup(line, p - line);
 	addr = strtol(p+1, NULL, 10);
 
-	htab_put(symtab, addr, sym, 1);
+	htab_ui16_put(symtab, addr, sym, 1);
 	return 0;
 }
 
 /*
  * Load symbol table into a hash-table in memory
  */
-int load_symtab(char *path, htab *symtab)
+int load_symtab(char *path, htab_ui16 *symtab)
 {
 	FILE *file;
 	dynarr line;
@@ -288,7 +288,7 @@ int load_symtab(char *path, htab *symtab)
 	}
 
 	dynarr_alloc(&line, sizeof(char));
-	htab_new(symtab, 32);
+	htab_ui16_new(symtab, 32);
 
 	for (;;) {
 		len = fread(buf, 1, sizeof(buf), file);
@@ -324,7 +324,7 @@ err:
 	perror(path);
 	fclose(file);
 	dynarr_free(&line);
-	htab_del(symtab, 1);
+	htab_ui16_del(symtab, 1);
 	return -1;
 }
 
@@ -336,7 +336,7 @@ int main(int argc, char *argv[])
 	struct s16emu *emu;
 	ssize_t prog_size;
 
-	htab symtab;
+	htab_ui16 symtab;
 
 	arg_sym = NULL;
 
@@ -378,7 +378,7 @@ int main(int argc, char *argv[])
 	execute(emu, arg_sym ? &symtab : NULL);
 
 	if (arg_sym)
-		htab_del(&symtab, 1);
+		htab_ui16_del(&symtab, 1);
 	free(emu);
 	return 0;
 
