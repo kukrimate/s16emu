@@ -1,0 +1,53 @@
+Grammer used by the flexible assembler, aka s16asm:
+
+<syntax> ::= <line> <syntax>
+
+<line> ::= <opt-label> <opcode> <opt-operands> LF
+<operands> ::= <operand> , <operands>
+
+<label> ::= <identifier> :
+<opcode> ::= <identifier>
+
+<operand> ::= <register-operand> | <eaddress-operand> | <constant>
+
+<eaddress-operand> ::= <displacement> [ <register-operand> ]
+<displacement> ::= <identifier> | <numeric-constant>
+
+<identifier> ::= <nondigit> <label> <nondigit> <label> <digit>
+<nondigit> ::= _ | a | b | c | d | e | f | g | h | i | j | k | l | m |
+                   n | o | p | q | e | s | t | u | v | w | x | y | z |
+                   A | B | C | D | E | F | G | H | I | J | K | L | M |
+                   N | O | P | Q | R | S | T | U | V | W | X | Y | Z
+
+<register-operand> ::= R <register-num>
+<register-num> ::= 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+                   10 | 11 | 12 | 13 | 14 | 15
+
+<constant>         ::= <numeric-constant> | <char-constant> | <string-constant>
+<numeric-constant> ::= <dec-constant> | <hex-constant> |
+                       <oct-constant> | <bin-constant>
+
+<dec-constant> ::= <sign> <decimal>
+<sign>         ::= - | +
+<decimal>      ::= <digit> <decimal>
+<digit>        ::= 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+
+<hex-constant> ::= 0x <hex>
+<hex>          ::= <hexdigit> <hex>
+<hexdigit>     ::= 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | a | b | c |
+                   d | e | f | A | B | C | D | E | F
+
+<oct-constant> ::= 0 <oct>
+<oct>          ::= <octdigit> <oct>
+<octdigit>     ::= 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
+
+<bin-constant> ::= 0b <bin>
+<bin>          ::= <bindigit> <bin>
+<bindigit>     ::= 0 | 1
+
+<char-constant> ::= ' <char-single> '
+<char-single>   ::= any member of the source character set except '
+
+<string-constant> ::= " <char-sequence> "
+<char-sequence>   ::= <char-multi> <char-sequence>
+<char-multi>      ::= any member of the source character set except "
