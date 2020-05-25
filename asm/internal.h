@@ -4,23 +4,25 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))
 
-/* Maximum number of operands */
-#define S16_MAX_OPERANDS 3
-
-/* Assemble callback */
-typedef void (*s16_write)(char *str, dynarr *buf, htab *symtab);
-
-struct s16_opdef {
-	/* Opcode */
-	char *opcode;
-	/* Encoded length in words */
-	size_t length;
-	/* Write base instruction */
-	s16_write write_base;
-	/* Number of operands */
-	size_t operands;
-	/* Write operands */
-	s16_write write_operands[S16_MAX_OPERANDS];
+enum s16_token_type {
+	LABEL,   /* Start of line, ends with ':' */
+	OPCODE,  /* Start of line or after a label, ends with a ' ', '\t' or EOL */
+	OPERAND, /* After an opcode, ends with ',' or EOL */
+	COMMENT  /* Starts with ';', ends with EOL */
 };
 
-struct s16_opdef *lookup_opdef(char *opcode);
+/*
+ * The "tokenize" function creates a linked-list of these tokens
+ */
+
+struct s16_token {
+	enum s16_token_type type;
+	char *data;
+	struct s16_token *next;
+};
+
+
+/*
+ * Assemble a list of tokens
+ */
+void assemble(struct s16_token *head, int outfd);

@@ -17,23 +17,6 @@
 
 #include "internal.h"
 
-enum s16_token_type {
-	LABEL,   /* Start of line, ends with ':' */
-	OPCODE,  /* Start of line or after a label, ends with a ' ', '\t' or EOL */
-	OPERAND, /* After an opcode, ends with ',' or EOL */
-	COMMENT  /* Starts with ';', ends with EOL */
-};
-
-/*
- * The "tokenize" function creates a linked-list of these tokens
- */
-
-struct s16_token {
-	enum s16_token_type type;
-	char *data;
-	struct s16_token *next;
-};
-
 /*
  * NOTE:
  *  There is a bit of triple pointer magic here, but basically all it does is
@@ -127,68 +110,6 @@ struct s16_token *tokenize(char *string, size_t length)
 	return head;
 }
 
-void assemble(struct s16_token *head, int outfd)
-{
-	uint16_t address;
-	htab labels;
-	dynarr code;
-	struct s16_token *cur;
-	struct s16_opdef *opdef;
-	size_t i;
-	uint8_t tmp;
-
-	address = 0;
-	htab_new(&labels, 32);
-	dynarr_alloc(&code, sizeof(uint16_t));
-
-	/* First stage */
-	for (cur = head; cur; cur = cur->next)
-		switch (cur->type) {
-		case LABEL:
-			htab_put(&labels, cur->data, address, 0);
-			break;
-		case OPCODE:
-			opdef = lookup_opdef(cur->data);
-			if (!opdef) {
-				fprintf(stderr, "Unkonwn instruction %s\n", cur->data);
-				goto done;
-			}
-			address += opdef->length;
-			break;
-		default:
-			break;
-		}
-
-	/* Second stage */
-	for (cur = head; cur; cur = cur->next)
-		switch (cur->type) {
-		case OPCODE:
-			opdef = lookup_opdef(cur->data);
-			opdef->write_base(cur->data, &code, &labels);
-			for (i = 0; i < opdef->operands; ++i) {
-				cur = cur->next;
-				opdef->write_operands[i](cur->data, &code, &labels);
-			}
-			break;
-		case OPERAND:
-			fprintf(stderr, "Unexpected operand %s\n", cur->data);
-			goto done;
-		default:
-			break;
-		}
-
-	for (i = 0; i < code.elem_cnt; ++i) {
-		tmp = dynarr_getw(&code, i) >> 8;
-		write(outfd, &tmp, 1);
-		tmp = dynarr_getw(&code, i);
-		write(outfd, &tmp, 1);
-	}
-
-done:
-	htab_del(&labels, 0);
-	dynarr_free(&code);
-}
-
 int main(int argc, char *argv[])
 {
 	int opt, infd, outfd;
@@ -229,7 +150,7 @@ int main(int argc, char *argv[])
 
 	/* Open output file */
 	if (outfile) {
-		outfd = open(outfile, O_RDWR);
+		outfd = open(outfile, O_WRONLY | O_TRUNC | O_CREAT, 0644);
 		if (-1 == outfd) {
 			perror(outfile);
 			close(infd);
