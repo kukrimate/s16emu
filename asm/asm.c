@@ -55,6 +55,7 @@ struct s16_token *tokenize(char *string, size_t length)
 	struct s16_token *head, **next;
 	enum s16_token_type type;
 	char *ptr;
+	_Bool literal;
 	dynarr tmp;
 
 	head = NULL;
@@ -62,15 +63,30 @@ struct s16_token *tokenize(char *string, size_t length)
 
 	type = LABEL;
 	ptr = string;
+	literal = 0;
 
 	dynarr_alloc(&tmp, sizeof(char));
 
 	for (; ptr < string + length; ++ptr)
 		switch (*ptr) {
+		case '"':
+			literal = !literal;
+			dynarr_addc(&tmp, *ptr);
+			break;
 		case ';':
+			if (literal) {
+				dynarr_addc(&tmp, *ptr);
+				break;
+			}
+
 			type = COMMENT;
 			break;
 		case ':':
+			if (literal) {
+				dynarr_addc(&tmp, *ptr);
+				break;
+			}
+
 			if (LABEL == type) {
 				append_token(&next, type, &tmp);
 				type = OPCODE;
@@ -78,6 +94,11 @@ struct s16_token *tokenize(char *string, size_t length)
 			break;
 		case ' ':
 		case '\t':
+			if (literal) {
+				dynarr_addc(&tmp, *ptr);
+				break;
+			}
+
 			/* Leading spaces can't cause state transitions */
 			if (!tmp.elem_cnt)
 				continue;
@@ -89,10 +110,20 @@ struct s16_token *tokenize(char *string, size_t length)
 			}
 			break;
 		case ',':
+			if (literal) {
+				dynarr_addc(&tmp, *ptr);
+				break;
+			}
+
 			if (OPERAND == type)
 				append_token(&next, type, &tmp);
 			break;
 		case '\n':
+			/* Pretend literal lasting to LF is fine,
+		 		backend will diagnose it anyways */
+			if (literal)
+				literal = 0;
+
 			/* Terminating ':' missing, LABEL means opcode here */
 			if (LABEL == type || OPCODE == type)
 				append_token(&next, OPCODE, &tmp);

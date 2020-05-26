@@ -155,6 +155,29 @@ static int assemble_ea(char *str, htab *symtab, dynarr *buf)
 	free(disp);
 }
 
+static int assemble_ascii(char *str, htab *symtab, dynarr *buf)
+{
+	size_t l;
+	char *end;
+
+ 	/* NOTE: this makes sure the code below doesnt blow up */
+ 	l = strlen(str);
+	if (l < 2)
+		return -1;
+
+	end = str + l - 1;
+	if (*str != '"' || *end != '"')
+		return -1;
+
+	/* NOTE: get rid of non-existent opcode the assembler wrote */
+	buf->elem_cnt -= 1;
+	for (++str; str < end; ++str)
+		dynarr_addw(buf, *str);
+	dynarr_addw(buf, 0);
+
+	return 0;
+}
+
 typedef int (*s16_operand)(char *str, htab *symtab, dynarr *buf);
 
 struct s16_opdef {
@@ -207,6 +230,7 @@ static struct s16_opdef opdefs[] = {
 
 	/* Assembler commands */
 	{ "data", 1, 0x0000, 1, { assemble_const } },
+	{ "ascii", 1, 0x0000, 1, { assemble_ascii } },
 };
 
 static struct s16_opdef *lookup(char *opcode)
