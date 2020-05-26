@@ -69,6 +69,12 @@ int main(int argc, char *argv[])
 
 	/* Tokenize and assemble */
 	head = tokenize(str, len);
+	if (!head) {
+		fprintf(stderr, "Invalid syntax!\n");
+		close(infd);
+		close(outfd);
+		return 1;
+	}
 	assemble(head, outfd);
 
 	free_tokens(head);
