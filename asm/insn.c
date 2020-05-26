@@ -1,5 +1,5 @@
 /*
- * Flexible Sigma16 instruction encoders
+ * Instruction encoder for s16asm
  */
 
 #include <stdio.h>

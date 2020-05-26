@@ -4,6 +4,10 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))
 
+/*
+ * Tokenizer
+ */
+
 enum s16_token_type {
 	LABEL,   /* Start of line, ends with ':' */
 	OPCODE,  /* Start of line or after a label, ends with a ' ', '\t' or EOL */
@@ -21,8 +25,10 @@ struct s16_token {
 	struct s16_token *next;
 };
 
+struct s16_token *tokenize(char *string, size_t length);
+void free_tokens(struct s16_token *head);
 
 /*
- * Assemble a list of tokens
+ * Instruction encoder
  */
 void assemble(struct s16_token *head, int outfd);

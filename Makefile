@@ -20,7 +20,8 @@ ASM_OBJ := \
 	lib/dynarr.o \
 	lib/htab.o \
 	asm/insn.o \
-	asm/asm.o
+	asm/tok.o \
+	asm/main.o
 
 .PHONY: all
 all: s16asm s16emu
@@ -36,6 +37,6 @@ s16emu: $(OBJ)
 
 .PHONY: clean
 clean:
-	rm -f $(OBJ) s16emu
+	rm -f $(OBJ) $(ASM_OBJ) s16emu s16asm
 
 endif

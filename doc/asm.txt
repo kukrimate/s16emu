@@ -1,4 +1,4 @@
-Grammer used by the flexible assembler, aka s16asm:
+Grammar used by the flexible assembler, aka s16asm:
 
 <syntax> ::= <line> <syntax>
 
