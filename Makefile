@@ -1,42 +1,37 @@
-ifeq ($(BUILD_WIN),1)
-
-include Makefile.win
-
-else
-
-# Compiler flags
-CFLAGS  := -Ilib -D_GNU_SOURCE -std=c99 -Wpedantic -Wall -O2 -g
+# Flags
+CFLAGS  := -std=c99 -Wall -Wpedantic -D_GNU_SOURCE -Isrc/lib -g
 LDFLAGS := -g
 LIBS    :=
 
-# Object files
-OBJ := \
-	lib/dynarr.o \
-	lib/htab_ui16.o \
-	src/alu.o \
-	src/emu.o
+# Shared
+LIB_OBJ := \
+	src/lib/dynarr.o \
+	src/lib/htab.o \
+	src/lib/htab_ui16.o
 
+# Assembler
 ASM_OBJ := \
-	lib/dynarr.o \
-	lib/htab.o \
-	asm/insn.o \
-	asm/tok.o \
-	asm/main.o
+	src/asm/insn.o \
+	src/asm/tok.o \
+	src/asm/main.o
+
+# Emulator
+EMU_OBJ := \
+	src/emu/alu.o \
+	src/emu/emu.o
 
 .PHONY: all
 all: s16asm s16emu
 
-s16asm: $(ASM_OBJ)
-	$(CC) $(LDFLAGS) $(ASM_OBJ) -o $@ $(LIBS)
+s16asm: $(ASM_OBJ) $(LIB_OBJ)
+	$(CC) $(LDFLAGS) $^ -o $@ $(LIBS)
 
-s16emu: $(OBJ)
-	$(CC) $(LDFLAGS) $(OBJ) -o $@ $(LIBS)
+s16emu: $(EMU_OBJ) $(LIB_OBJ)
+	$(CC) $(LDFLAGS) $^ -o $@ $(LIBS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $^ -o $@
 
 .PHONY: clean
 clean:
-	rm -f $(OBJ) $(ASM_OBJ) s16emu s16asm
-
-endif
+	rm -f $(LIB_OBJ) $(ASM_OBJ) $(EMU_OBJ) s16emu s16asm
