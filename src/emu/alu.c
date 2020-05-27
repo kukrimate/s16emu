@@ -83,6 +83,9 @@ void s16div(uint16_t *q, uint16_t *r, uint16_t a, uint16_t b)
 	i_a = tosigint(a);
 	i_b = tosigint(b);
 
+	if (!i_b) /* Zero division is just ignored */
+		return;
+
 	i_q	= i_a / i_b;
 	if (i_q < 0 && i_a % i_b) /* Emulate floor division */
 		--i_q;
