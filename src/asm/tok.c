@@ -18,7 +18,7 @@ static void detrail_token(dynarr *tmp)
 
 	p = (char *) tmp->buffer + tmp->elem_cnt;
 	while ((char *) tmp->buffer <= --p)
-		if (*p == '\t' || *p == ' ')
+		if (*p == '\r' || *p == '\t' || *p == ' ')
 			--tmp->elem_cnt;
 }
 
@@ -44,39 +44,39 @@ static void append_token(struct s16_token ***next,
 	*next = &(**next)->next;
 }
 
-#define INDEX_LABEL 0
+#define INDEX_FIRST 0
 #define INDEX_OPCODE 1
 #define INDEX_OPERAND 2
 #define INDEX_COMMENT 3
 
-static ssize_t tok_label
-	(struct s16_token ***next, dynarr *tmp, char last, char cur)
+static ssize_t tok_first
+	(struct s16_token ***next, dynarr *tmp, char cur)
 {
 	switch (cur) {
 	case ';':
-		append_token(next, LABEL, tmp);
+		append_token(next, OPCODE, tmp);
 		return INDEX_COMMENT;
 	case '\n':
-		append_token(next, LABEL, tmp);
-		return INDEX_LABEL;
+		append_token(next, OPCODE, tmp);
+		return INDEX_FIRST;
 	case ':':
 		append_token(next, LABEL, tmp);
 		return INDEX_OPCODE;
+	case '\r':
 	case '\t':
 	case ' ':
 		if (!tmp->elem_cnt)
-			return INDEX_LABEL;
-		/* Has to end with : to be a label -> this was actually an opcode */
+			return INDEX_FIRST;
 		append_token(next, OPCODE, tmp);
 		return INDEX_OPERAND;
 	default:
 		dynarr_addc(tmp, cur);
-		return INDEX_LABEL;
+		return INDEX_FIRST;
 	}
 }
 
 static ssize_t tok_opcode
-	(struct s16_token ***next, dynarr *tmp, char last, char cur)
+	(struct s16_token ***next, dynarr *tmp, char cur)
 {
 	switch (cur) {
 	case ';':
@@ -84,7 +84,8 @@ static ssize_t tok_opcode
 		return INDEX_COMMENT;
 	case '\n':
 		append_token(next, OPCODE, tmp);
-		return INDEX_LABEL;
+		return INDEX_FIRST;
+	case '\r':
 	case '\t':
 	case ' ':
 		if (!tmp->elem_cnt)
@@ -98,7 +99,7 @@ static ssize_t tok_opcode
 }
 
 static ssize_t tok_operand
-	(struct s16_token ***next, dynarr *tmp, char last, char cur)
+	(struct s16_token ***next, dynarr *tmp, char cur)
 {
 	switch (cur) {
 	case ';':
@@ -106,10 +107,11 @@ static ssize_t tok_operand
 		return INDEX_COMMENT;
 	case '\n':
 		append_token(next, OPERAND, tmp);
-		return INDEX_LABEL;
+		return INDEX_FIRST;
 	case ',':
 		append_token(next, OPERAND, tmp);
 		return INDEX_OPERAND;
+	case '\r':
 	case '\t':
 	case ' ':
 		if (!tmp->elem_cnt)
@@ -121,24 +123,21 @@ static ssize_t tok_operand
 }
 
 static ssize_t tok_comment
-	(struct s16_token ***next, dynarr *tmp, char last, char cur)
+	(struct s16_token ***next, dynarr *tmp, char cur)
 {
 	switch (cur) {
 	case '\n':
-		// append_token(next, COMMENT, tmp);
-		tmp->elem_cnt = 0;
-		return INDEX_LABEL;
+		return INDEX_FIRST;
 	default:
-		dynarr_addc(tmp, cur);
 		return INDEX_COMMENT;
 	}
 }
 
 typedef ssize_t (*tok_fun)
-	(struct s16_token ***next, dynarr *tmp, char last, char cur);
+	(struct s16_token ***next, dynarr *tmp, char cur);
 
 static tok_fun tok_table[] = {
-	tok_label,
+	tok_first,
 	tok_opcode,
 	tok_operand,
 	tok_comment
@@ -150,24 +149,17 @@ struct s16_token *tokenize(char *string, size_t length)
 	ssize_t tok_index;
 
 	dynarr tmp;
-	char last, *ptr;
 
 	head = NULL;
 	next = &head; /* First "next" pointer is written to the head itself */
-	tok_index = INDEX_LABEL;
+	tok_index = INDEX_FIRST;
 
 	dynarr_alloc(&tmp, sizeof(char));
-	last = 0;
 
-	for (ptr = string; ptr < string + length; ++ptr) {
-		if ('\r' == *ptr)
-			continue;
-
-		tok_index = tok_table[tok_index](&next, &tmp, last, *ptr);
+	while (length--) {
+		tok_index = tok_table[tok_index](&next, &tmp, *string++);
 		if (-1 == tok_index)
 			goto err;
-
-		last = *ptr;
 	}
 
 	dynarr_free(&tmp);
