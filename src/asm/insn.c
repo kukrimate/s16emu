@@ -220,6 +220,8 @@ static struct s16_opdef opdefs[] = {
 	{ "jumpt" , 2, 0xf007, 2, { assemble_d, assemble_ea } },
 	{ "jal"   , 2, 0xf008, 2, { assemble_d, assemble_ea } },
 
+	{ "nop", 1, 0xe000, 0, {} },
+
 	/* RX jump aliases */
 	{ "jumplt", 2, 0xf305, 1, { assemble_ea } },
 	{ "jumple", 2, 0xf104, 1, { assemble_ea } },
