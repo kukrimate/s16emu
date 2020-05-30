@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "lexer.h"
+#include "parser.h"
 
 static char *readfile(char *path)
 {
@@ -40,13 +41,21 @@ err_close:
 	return NULL;
 }
 
+/*
+ * Instruction encoder
+ */
+void assemble(struct s16_parse_token *root, int outfd);
+
+
 int main(int argc, char *argv[])
 {
 	int opt, outfd;
 	char *outfile;
 	char *str;
+
 	long line;
-	struct s16_token *head;
+	struct s16_lex_token *tok;
+	struct s16_parse_token *root;
 
 	outfile = NULL;
 
@@ -82,18 +91,30 @@ int main(int argc, char *argv[])
 		outfd = STDOUT_FILENO;
 	}
 
-	/* Tokenize and assemble */
-	head = tokenize(str, &line);
-	if (!head) {
-		fprintf(stderr, "Error on line %ld\n", line);
-		close(outfd);
-		return 1;
-	}
-	// assemble(head, outfd);
-	free_tokens(head);
+	/* Lexical analysis */
+	tok = tokenize(str, &line);
+	if (!tok)
+		goto assemble_err;
+	/* Generate AST */
+	root = genast(tok, &line);
+	if (!root)
+		goto assemble_err;
+	/* Assemble AST */
+	assemble(root, outfd);
+
+	freetokens(tok);
+	freeast(root);
+	free(str);
+	close(outfd);
 	return 0;
 
 print_usage:
 	fprintf(stderr, "Usage %s [-o OUT] FILE\n", argv[0]);
+	return 1;
+
+assemble_err:
+	fprintf(stderr, "Error on line %ld\n", line);
+	free(str);
+	close(outfd);
 	return 1;
 }

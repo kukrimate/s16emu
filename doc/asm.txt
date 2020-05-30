@@ -37,7 +37,7 @@ Grammar used by the flexible assembler, aka s16asm:
 <hexdigit>     ::= 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | a | b | c |
                    d | e | f | A | B | C | D | E | F
 
-<oct-constant> ::= 0o <oct>
+<oct-constant> ::= 0 <oct>
 <oct>          ::= <octdigit> <oct>
 <octdigit>     ::= 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
 

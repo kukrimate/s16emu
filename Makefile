@@ -12,6 +12,8 @@ LIB_OBJ := \
 # Assembler
 ASM_OBJ := \
 	src/asm/lexer.o \
+	src/asm/parser.o \
+	src/asm/insn.o \
 	src/asm/main.o
 
 # Emulator

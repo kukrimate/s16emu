@@ -10,6 +10,30 @@
 #include "dynarr.h"
 #include "lexer.h"
 
+static char *registers[] = { \
+	"0", "1", "2", "3", "4", "5", "6" , "7",
+	"8", "9", "10", "11", "12", "13", "14", "15", NULL };
+
+static _Bool isregister(char *str)
+{
+	char **reg;
+
+	switch (*str++) {
+	case 'r':
+	case 'R':
+		break;
+	default:
+		return 0;
+	}
+
+	for (reg = registers; *reg; ++reg) {
+		if (!strncmp(*reg, str, strlen(*reg)))
+			return 1;
+	}
+
+	return 0;
+}
+
 static char *getidentifier(char *str, char **endptr)
 {
 	char *ptr;
@@ -58,14 +82,14 @@ static long getdigit(char digit)
 static long getlong(char *str, char **endptr, int base)
 {
 	char *ptr;
-	long result, tmp1, tmp2;
+	long result, tmp;
 
 	result = 0;
 
 	/* Find the last valid digit */
 	for (ptr = str; *ptr; ++ptr) {
-		tmp1 = getdigit(*ptr);
-		if (-1 == tmp1 || tmp1 >= base)
+		tmp = getdigit(*ptr);
+		if (-1 == tmp || tmp >= base)
 			break;
 	}
 
@@ -74,13 +98,10 @@ static long getlong(char *str, char **endptr, int base)
 		*endptr = ptr;
 
 	/* Calculate conversion */
-	tmp1 = 1;
+	tmp = 1;
 	while (--ptr >= str) {
-		tmp2 = result + getdigit(*ptr) * tmp1;
-		if (tmp2 < result) /* Check for overflow */
-			return -1;
-		result = tmp2;
-		tmp1 *= base;
+		result += getdigit(*ptr) * tmp;
+		tmp *= base;
 	}
 
 	return result;
@@ -89,8 +110,17 @@ static long getlong(char *str, char **endptr, int base)
 static long getconst(char *str, char **endptr)
 {
 	int base;
+	_Bool sign;
 
-	if ('0' == *str)
+	base = 10; /* Base 10 is default */
+	sign = 0;  /* Default to positive */
+
+	if ('-' == *str) {
+		sign = 1;
+		++str;
+	} else if ('+' == *str) {
+		++str;
+	} else if ('0' == *str) { /* Base prefix */
 		switch (*++str) {
 		case 'x':
 		case 'X': /* Hexadecimal */
@@ -109,70 +139,68 @@ static long getconst(char *str, char **endptr)
 			base = 8;
 			break;
 		}
-	else
-		base = 10;
+	}
 
-	return getlong(str, endptr, base);
+	return sign ? -getlong(str, endptr, base) : getlong(str, endptr, base);
 }
 
-static int getescape(char *str, char **endptr)
+static int getcharacter(char *str, char **endptr)
 {
 	char ch;
 	long tmp;
 
 	if ('\\' != *str)
-		return -1;
-
-	/* Support for most common C escape sequences */
-	switch (*++str) {
-	case 'a':
-		++str;
-		ch = '\a';
-		break;
-	case 'b':
-		++str;
-		ch = '\b';
-		break;
-	case 'f':
-		++str;
-		ch = '\f';
-		break;
-	case 'n':
-		++str;
-		ch = '\n';
-		break;
-	case 'r':
-		++str;
-		ch = '\r';
-		break;
-	case 't':
-		++str;
-		ch = '\t';
-		break;
-	case 'v':
-		++str;
-		ch = '\v';
-		break;
-	case '\\':
-	case '\'':
-	case '\"':
-	case '\?':
 		ch = *str++;
-		break;
-	case 'x':
-		++str;
-		tmp = getlong(str, &str, 16);
-		if (-1 == tmp || tmp > CHAR_MAX)
-			return -1;
-		ch = tmp;
-		break;
-	default:
-		tmp = getlong(str, &str, 8);
-		if (-1 == tmp || tmp > CHAR_MAX)
-			return -1;
-		ch = tmp;
-		break;
-	}
+	else
+		switch (*++str) {
+		case 'a':
+			++str;
+			ch = '\a';
+			break;
+		case 'b':
+			++str;
+			ch = '\b';
+			break;
+		case 'f':
+			++str;
+			ch = '\f';
+			break;
+		case 'n':
+			++str;
+			ch = '\n';
+			break;
+		case 'r':
+			++str;
+			ch = '\r';
+			break;
+		case 't':
+			++str;
+			ch = '\t';
+			break;
+		case 'v':
+			++str;
+			ch = '\v';
+			break;
+		case '\\':
+		case '\'':
+		case '\"':
+		case '\?':
+			ch = *str++;
+			break;
+		case 'x':
+			++str;
+			tmp = getlong(str, &str, 16);
+			if (-1 == tmp || tmp > CHAR_MAX)
+				return -1;
+			ch = tmp;
+			break;
+		default:
+			tmp = getlong(str, &str, 8);
+			if (-1 == tmp || tmp > CHAR_MAX)
+				return -1;
+			ch = tmp;
+			break;
+		}
 
 	if (endptr)
 		*endptr = str;
@@ -190,28 +218,18 @@ static char *getstrliteral(char *str, char **endptr)
 
 	dynarr_alloc(&tmp, sizeof(char));
 
-	while (*str) {
-		switch (*str) {
-		case '"':
-			++str;
-			goto end;
-		case '\\':
-			ch = getescape(str, &str);
-			break;
-		default:
-			ch = *str++;
-		}
-
+	while (*str && *str != '"') {
+		ch = getcharacter(str, &str);
 		if (-1 == ch)
 			break;
-
 		dynarr_addc(&tmp, ch);
 	}
 
-	dynarr_free(&tmp);
-	return NULL;
+	if ('"' != *str++) {
+		dynarr_free(&tmp);
+		return NULL;
+	}
 
-end:
 	if (endptr)
 		*endptr = str;
 
@@ -219,27 +237,12 @@ end:
 	return tmp.buffer;
 }
 
-static union s16_token_data dataconsant(long constant)
-{
-	return (union s16_token_data) { .constant = constant };
-}
-
-static union s16_token_data datachar(char ch)
-{
-	return (union s16_token_data) { .ch = ch };
-}
-
-static union s16_token_data datastr(char *str)
-{
-	return (union s16_token_data) { .str = str };
-}
-
 static void append_token(
-	struct s16_token ***next,
-	enum s16_token_type type,
-	union s16_token_data data)
+	struct s16_lex_token ***next,
+	enum s16_lex_type type,
+	union s16_lex_data data)
 {
-	**next = malloc(sizeof(struct s16_token));
+	**next = malloc(sizeof(struct s16_lex_token));
 	(**next)->type = type;
 	(**next)->data = data;
 	(**next)->next = NULL;
@@ -247,10 +250,10 @@ static void append_token(
 	*next = &(**next)->next;
 }
 
-struct s16_token *tokenize(char *str, long *line)
+struct s16_lex_token *tokenize(char *str, long *line)
 {
-	struct s16_token *head, **next;
-	int tmp;
+	struct s16_lex_token *head, **next;
+	long tmp;
 	char *stmp;
 
 	head = NULL;
@@ -277,8 +280,6 @@ struct s16_token *tokenize(char *str, long *line)
 		/* Punctuators */
 		case ':':
 		case ',':
-		case '+':
-		case '-':
 		case '[':
 		case ']':
 			append_token(&next, PUNCTUATOR, datachar(*str++));
@@ -298,18 +299,10 @@ struct s16_token *tokenize(char *str, long *line)
 
 		/* Character constant */
 		case '\'':
-			switch (*++str) {
-			case '\\':
-				tmp = getescape(str, &str);
-				break;
-			default:
-				tmp = *str++;
-			}
-
+			tmp = getcharacter(str, &str);
 			if (-1 == tmp || '\'' != *str++)
 				goto err;
-
-			append_token(&next, CONSTANT, dataconsant(tmp));
+			append_token(&next, CONSTANT, datalong(tmp));
 			break;
 
 		/* String literal */
@@ -321,15 +314,20 @@ struct s16_token *tokenize(char *str, long *line)
 			break;
 
 		default:
+			/* Register */
+			if (isregister(str))
+				append_token(&next, REGISTER,
+					datalong(getlong(++str, &str, 10)));
+
 			/* Identifier */
-			if ('_' == *str || isalpha(*str))
+			else if ('_' == *str || isalpha(*str))
 				append_token(&next, IDENTIFIER,
 					datastr(getidentifier(str, &str)));
 
 			/* Constant */
-			else if (isdigit(*str))
+			else if ('-' == *str || '+' == *str || isdigit(*str))
 				append_token(&next, CONSTANT,
-					dataconsant(getconst(str, &str)));
+					datalong(getconst(str, &str)));
 
 			/* Invalid token */
 			else
@@ -339,19 +337,19 @@ struct s16_token *tokenize(char *str, long *line)
 	return head;
 
 err:
-	free_tokens(head);
+	freetokens(head);
 	return NULL;
 }
 
-void free_tokens(struct s16_token *head)
+void freetokens(struct s16_lex_token *head)
 {
-	struct s16_token *tmp;
+	struct s16_lex_token *tmp;
 
 	while (head) {
 		tmp = head->next;
 		if (IDENTIFIER == head->type
 				|| STRING_LITERAL == head->type)
-			free(head->data.str);
+			free(head->data.s);
 		free(head);
 		head = tmp;
 	}
