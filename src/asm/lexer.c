@@ -10,28 +10,29 @@
 #include "dynarr.h"
 #include "lexer.h"
 
-static char *registers[] = { \
-	"0", "1", "2", "3", "4", "5", "6" , "7",
-	"8", "9", "10", "11", "12", "13", "14", "15", NULL };
+/* NOTE: start with the longest for greedy matching */
+static char *regs[] = {
+	"15", "14", "13", "12", "11", "10", "9", "8",
+	"7", "6", "5", "4", "3", "2", "1", "0", NULL
+};
 
-static _Bool isregister(char *str)
+static int getregister(char *str, char **endptr)
 {
-	char **reg;
+	int i;
 
-	switch (*str++) {
+	switch (*str) {
 	case 'r':
 	case 'R':
-		break;
-	default:
-		return 0;
+		++str;
+		for (i = 0; regs[i]; ++i)
+			if (!strncmp(regs[i], str, strlen(regs[i]))) {
+				if (endptr)
+					*endptr = str + strlen(regs[i]);
+				return 15 - i;
+			}
 	}
 
-	for (reg = registers; *reg; ++reg) {
-		if (!strncmp(*reg, str, strlen(*reg)))
-			return 1;
-	}
-
-	return 0;
+	return -1;
 }
 
 static char *getidentifier(char *str, char **endptr)
@@ -314,10 +315,11 @@ struct s16_lex_token *tokenize(char *str, long *line)
 			break;
 
 		default:
+			tmp = getregister(str, &str);
+
 			/* Register */
-			if (isregister(str))
-				append_token(&next, REGISTER,
-					datalong(getlong(++str, &str, 10)));
+			if (-1 != tmp)
+				append_token(&next, REGISTER, datalong(tmp));
 
 			/* Identifier */
 			else if ('_' == *str || isalpha(*str))
