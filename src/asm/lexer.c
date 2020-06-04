@@ -10,6 +10,8 @@
 #include "dynarr.h"
 #include "lexer.h"
 
+dynarr_gen(char, c)
+
 /* NOTE: start with the longest for greedy matching */
 static char *regs[] = {
 	"15", "14", "13", "12", "11", "10", "9", "8",
@@ -211,31 +213,31 @@ static int getcharacter(char *str, char **endptr)
 
 static char *getstrliteral(char *str, char **endptr)
 {
-	dynarr tmp;
+	struct dynarrc tmp;
 	int ch;
 
 	if ('"' != *str++)
 		return NULL;
 
-	dynarr_alloc(&tmp, sizeof(char));
+	dynarrc_alloc(&tmp);
 
 	while (*str && *str != '"') {
 		ch = getcharacter(str, &str);
 		if (-1 == ch)
 			break;
-		dynarr_addc(&tmp, ch);
+		dynarrc_add(&tmp, ch);
 	}
 
 	if ('"' != *str++) {
-		dynarr_free(&tmp);
+		dynarrc_free(&tmp);
 		return NULL;
 	}
 
 	if (endptr)
 		*endptr = str;
 
-	dynarr_addc(&tmp, 0); /* NUL-terminate buffer */
-	return tmp.buffer;
+	dynarrc_add(&tmp, 0); /* NUL-terminate buffer */
+	return tmp.mem;
 }
 
 static void append_token(

@@ -1,11 +1,10 @@
 # Flags
-CFLAGS  := -std=c99 -Wall -Wpedantic -D_GNU_SOURCE -Isrc/lib -g
+CFLAGS  := -std=c99 -Wall -Wpedantic -D_GNU_SOURCE -Isrc/lib -g -O1
 LDFLAGS := -g
 LIBS    :=
 
 # Shared
 LIB_OBJ := \
-	src/lib/dynarr.o \
 	src/lib/htab.o \
 	src/lib/htab_ui16.o
 

@@ -11,6 +11,8 @@
 
 #include "internal.h"
 
+dynarr_gen(char, c)
+
 /* Enable tracing */
 static _Bool dotrace = 0;
 
@@ -276,7 +278,7 @@ int addsym(char *line, htab_ui16 *symtab)
 int load_symtab(char *path, htab_ui16 *symtab)
 {
 	FILE *file;
-	dynarr line;
+	struct dynarrc line;
 
 	ssize_t len;
 	char buf[4096], *p;
@@ -287,7 +289,7 @@ int load_symtab(char *path, htab_ui16 *symtab)
 		return -1;
 	}
 
-	dynarr_alloc(&line, sizeof(char));
+	dynarrc_alloc(&line);
 	htab_ui16_new(symtab, 32);
 
 	for (;;) {
@@ -296,34 +298,34 @@ int load_symtab(char *path, htab_ui16 *symtab)
 			goto err;
 
 		if (!len) {
-			if (line.elem_cnt > 0) {
-				dynarr_addc(&line, 0);
-				addsym(line.buffer, symtab);
-				line.elem_cnt = 0;
+			if (line.nmemb > 0) {
+				dynarrc_add(&line, 0);
+				addsym(line.mem, symtab);
+				line.nmemb = 0;
 			}
 			break;
 		}
 
 		for (p = buf; p < buf + len; ++p) {
 			if (*p == '\n') {
-				if (line.elem_cnt > 0) {
-					dynarr_addc(&line, 0);
-					addsym(line.buffer, symtab);
-					line.elem_cnt = 0;
+				if (line.nmemb > 0) {
+					dynarrc_add(&line, 0);
+					addsym(line.mem, symtab);
+					line.nmemb = 0;
 				}
 			} else {
-				dynarr_addc(&line, *p);
+				dynarrc_add(&line, *p);
 			}
 		}
 	}
 
 	fclose(file);
-	dynarr_free(&line);
+	dynarrc_free(&line);
 	return 0;
 err:
 	perror(path);
 	fclose(file);
-	dynarr_free(&line);
+	dynarrc_free(&line);
 	htab_ui16_del(symtab, 1);
 	return -1;
 }

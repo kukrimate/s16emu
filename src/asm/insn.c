@@ -15,12 +15,14 @@
 #include "lexer.h"
 #include "parser.h"
 
+dynarr_gen(uint16_t, w)
+
 static int assemble_const
-	(struct s16_parse_token *ptok, htab *symtab, dynarr *buf)
+	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
 {
 	uint16_t *p;
 
-	p = dynarr_ptr(buf, buf->elem_cnt - 1);
+	p = dynarrw_ptr(buf, buf->nmemb - 1);
 
 	if (OPERAND_CONSTANT == ptok->type) {
 		*p = (uint16_t) ptok->data.l;
@@ -39,7 +41,7 @@ static int assemble_const
 }
 
 static int assemble_d
-	(struct s16_parse_token *ptok, htab *symtab, dynarr *buf)
+	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
 {
 	uint16_t *p;
 
@@ -48,13 +50,13 @@ static int assemble_d
 		return -1;
 	}
 
-	p = dynarr_ptr(buf, buf->elem_cnt - 1);
+	p = dynarrw_ptr(buf, buf->nmemb - 1);
 	*p |= (uint16_t) ptok->data.l << 8;
 	return 0;
 }
 
 static int assemble_a
-	(struct s16_parse_token *ptok, htab *symtab, dynarr *buf)
+	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
 {
 	uint16_t *p;
 
@@ -63,13 +65,13 @@ static int assemble_a
 		return -1;
 	}
 
-	p = dynarr_ptr(buf, buf->elem_cnt - 1);
+	p = dynarrw_ptr(buf, buf->nmemb - 1);
 	*p |= (uint16_t) ptok->data.l << 4;
 	return 0;
 }
 
 static int assemble_b
-	(struct s16_parse_token *ptok, htab *symtab, dynarr *buf)
+	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
 {
 	uint16_t *p;
 
@@ -78,13 +80,13 @@ static int assemble_b
 		return -1;
 	}
 
-	p = dynarr_ptr(buf, buf->elem_cnt - 1);
+	p = dynarrw_ptr(buf, buf->nmemb - 1);
 	*p |= (uint16_t) ptok->data.l;
 	return 0;
 }
 
 static int assemble_ea
-	(struct s16_parse_token *ptok, htab *symtab, dynarr *buf)
+	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
 {
 	if (OPERAND_EADDRESS != ptok->type) {
 		fprintf(stderr, "Invalid effective address\n");
@@ -93,12 +95,12 @@ static int assemble_ea
 
 	if (-1 == assemble_a(ptok->children[1], symtab, buf))
 		return -1;
-	dynarr_addw(buf, 0); /* NOTE: add 0 to avoid windback for displacement */
+	dynarrw_add(buf, 0); /* NOTE: add 0 to avoid windback for displacement */
 	return assemble_const(ptok->children[0], symtab, buf);
 }
 
 static int assemble_ascii
-	(struct s16_parse_token *ptok, htab *symtab, dynarr *buf)
+	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
 {
 	char *str;
 
@@ -108,16 +110,16 @@ static int assemble_ascii
 	}
 
 	/* NOTE: get rid of non-existent opcode the assembler wrote */
-	buf->elem_cnt -= 1;
+	buf->nmemb -= 1;
 	for (str = ptok->data.s; *str; ++str)
-		dynarr_addw(buf, *str);
-	dynarr_addw(buf, 0);
+		dynarrw_add(buf, *str);
+	dynarrw_add(buf, 0);
 
 	return 0;
 }
 
 typedef int (*s16_operand)
-	(struct s16_parse_token *ptok, htab *symtab, dynarr *buf);
+	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf);
 
 struct s16_opdef {
 	char *mnemonic;
@@ -190,14 +192,14 @@ void assemble(struct s16_parse_token *root, int outfd)
 {
 	uint16_t address;
 	htab labels;
-	dynarr code;
+	struct dynarrw code;
 	size_t i, j;
 	struct s16_opdef *opdef;
 	uint8_t tmp;
 
 	address = 0;
 	htab_new(&labels, 32);
-	dynarr_alloc(&code, sizeof(uint16_t));
+	dynarrw_alloc(&code);
 
 	/* First stage */
 	for (i = 0; i < root->child_cnt; ++i)
@@ -230,7 +232,7 @@ void assemble(struct s16_parse_token *root, int outfd)
 				goto done;
 			}
 
-			dynarr_addw(&code, opdef->opcode);
+			dynarrw_add(&code, opdef->opcode);
 
 			for (j = 0; j < opdef->operand_cnt; ++j) {
 				if (-1 == opdef->operands[j]
@@ -240,14 +242,14 @@ void assemble(struct s16_parse_token *root, int outfd)
 		}
 
 	/* Convert to big-endian and write to output */
-	for (i = 0; i < code.elem_cnt; ++i) {
-		tmp = dynarr_getw(&code, i) >> 8;
+	for (i = 0; i < code.nmemb; ++i) {
+		tmp = dynarrw_get(&code, i) >> 8;
 		write(outfd, &tmp, 1);
-		tmp = dynarr_getw(&code, i);
+		tmp = dynarrw_get(&code, i);
 		write(outfd, &tmp, 1);
 	}
 
 done:
 	htab_del(&labels, 0);
-	dynarr_free(&code);
+	dynarrw_free(&code);
 }
