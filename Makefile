@@ -1,5 +1,5 @@
 # Flags
-CFLAGS  := -std=c99 -Wall -Wpedantic -D_GNU_SOURCE -Isrc/lib -g -O1
+CFLAGS  := -std=c99 -Wall -D_GNU_SOURCE -DCOMPGOTO -Isrc/lib -g -O1
 LDFLAGS := -g
 LIBS    :=
 

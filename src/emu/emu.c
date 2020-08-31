@@ -65,10 +65,23 @@ static void trap_write(struct s16emu *emu, uint16_t a, uint16_t b)
  */
 void execute(struct s16emu *emu, htab_ui16 *symtab)
 {
+#ifdef COMPGOTO
+	static void *jmp_RRR[] = {
+		&&op_add, &&op_sub, &&op_mul, &&op_div, &&op_cmp, &&op_cmplt,
+		&&op_cmpeq, &&op_cmpgt, &&op_inv, &&op_and, &&op_or, &&op_xor,
+		&&op_addc, &&op_trap, &&op_exp, &&op_rx
+	};
+
+	static void *jmp_RX[] = {
+		&&op_lea, &&op_load, &&op_store, &&op_jump, &&op_jumpc0,
+		&&op_jumpc1, &&op_jumpf, &&op_jumpt, &&op_jal
+	};
+#endif
+
 	uint8_t op, d, a, b;
 
 	char adrbuf[10];
-	char *adrsym;
+	char *adrsym = NULL; /* NOTE: unecessary assingment, but it shuts up gcc */
 
 	for (;;) {
 		trace_print("PC: %04x\t", emu->pc);
@@ -80,60 +93,78 @@ void execute(struct s16emu *emu, htab_ui16 *symtab)
 		a = INSN_RA(emu->ir);
 		b = INSN_RB(emu->ir);
 
+#ifdef COMPGOTO
+		goto *jmp_RRR[op];
+#endif
+
 		switch (op) {
 		case 0: /* add */
+		op_add:
 			trace_print("add R%d,R%d,R%d\n", d, a, b);
 			s16add(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
 		case 1: /* sub */
+		op_sub:
 			trace_print("sub R%d,R%d,R%d\n", d, a, b);
 			s16sub(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
 		case 2: /* mul */
+		op_mul:
 			trace_print("mul R%d,R%d,R%d\n", d, a, b);
 			s16mul(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
 		case 3: /* div */
+		op_div:
 			trace_print("div R%d,R%d,R%d\n", d, a, b);
 			s16div(&emu->reg[d], &emu->reg[15], emu->reg[a], emu->reg[b]);
 			break;
 		case 4: /* cmp */
+		op_cmp:
 			trace_print("cmp R%d,R%d\n", a, b);
 			s16cmp(&emu->reg[15], emu->reg[a], emu->reg[b]);
 			break;
 		case 5: /* cmplt */
+		op_cmplt:
 			trace_print("cmplt R%d,R%d,R%d\n", d, a, b);
 			s16cmplt(&emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
 		case 6: /* cmpeq */
+		op_cmpeq:
 			trace_print("cmpeq R%d,R%d,R%d\n", d, a, b);
 			emu->reg[d] = emu->reg[a] == emu->reg[b];
 			break;
 		case 7: /* cmpgt */
+		op_cmpgt:
 			trace_print("cmpgt R%d,R%d,R%d\n", d, a, b);
 			s16cmpgt(&emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
 		case 8: /* inv */
+		op_inv:
 			trace_print("inv R%d,R%d\n", d, a);
 			emu->reg[d] = (uint16_t) ~emu->reg[a];
 			break;
 		case 9: /* and */
+		op_and:
 			trace_print("and R%d,R%d,R%d\n", d, a, b);
 			emu->reg[d] = emu->reg[a] & emu->reg[b];
 			break;
 		case 0xa: /* or */
+		op_or:
 			trace_print("or R%d,R%d,R%d\n", d, a, b);
 			emu->reg[d] = emu->reg[a] | emu->reg[b];
 			break;
 		case 0xb: /* xor */
+		op_xor:
 			trace_print("xor R%d,R%d,R%d\n", d, a, b);
 			emu->reg[d] = emu->reg[a] ^ emu->reg[b];
 			break;
 		case 0xc: /* addc */
+		op_addc:
 			trace_print("addc R%d,R%d,R%d\n", d, a, b);
 			s16addc(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
 			break;
 		case 0xd: /* trap */
+		op_trap:
 			trace_print("trap R%d,R%d,R%d\n", d, a, b);
 			switch (emu->reg[d]) {
 			case TRAP_EXIT:
@@ -146,56 +177,68 @@ void execute(struct s16emu *emu, htab_ui16 *symtab)
 				break;
 			}
 			break;
+		case 0xe: /* EXP format, current unused */
+		op_exp:
+			break;
 		case 0xf: /* RX format */
+		op_rx:
 			emu->adr = emu->ram[emu->pc++];
 
-			if (symtab)
-				adrsym = htab_ui16_get(symtab, emu->adr);
-			else
-				adrsym = NULL;
-			if (!adrsym) {
+			if (dotrace && (!symtab || !(adrsym = htab_ui16_get(symtab, emu->adr)))) {
 				snprintf(adrbuf, sizeof(adrbuf), "%04x", emu->adr);
 				adrsym = adrbuf;
 			}
+#ifdef COMPGOTO
+			goto *jmp_RX[b];
+#endif
 
 			switch (b) {
 			case 0: /* lea */
+			op_lea:
 				trace_print("lea R%d,%s[R%d]\n", d, adrsym, a);
 				emu->reg[d] = emu->adr + emu->reg[a];
 				break;
 			case 1: /* load */
+			op_load:
 				trace_print("load R%d,%s[R%d]\n", d, adrsym, a);
 				emu->reg[d] = emu->ram[emu->adr + emu->reg[a]];
 				break;
 			case 2: /* store */
+			op_store:
 				trace_print("store R%d,%s[R%d]\n", d, adrsym, a);
 				emu->ram[emu->adr + emu->reg[a]] = emu->reg[d];
 				break;
 			case 3: /* jump */
+			op_jump:
 				trace_print("jump R%d,%s[R%d]\n", d, adrsym, a);
 				emu->pc = emu->adr + emu->reg[a];
 				break;
 			case 4: /* jumpc0 */
+			op_jumpc0:
 				trace_print("jumpc0 R%d,%s[R%d]\n", d, adrsym, a);
 				if (!GET_BIT(emu->reg[15], d))
 					emu->pc = emu->adr + emu->reg[a];
 				break;
 			case 5: /* jumpc1 */
+			op_jumpc1:
 				trace_print("jumpc1 R%d,%s[R%d]\n", d, adrsym, a);
 				if (GET_BIT(emu->reg[15], d))
 					emu->pc = emu->adr + emu->reg[a];
 				break;
 			case 6: /* jumpf */
+			op_jumpf:
 				trace_print("jumpf R%d,%s[R%d]\n", d, adrsym, a);
 				if (!emu->reg[d])
 					emu->pc = emu->adr +  emu->reg[a];
 				break;
 			case 7: /* jumpt */
+			op_jumpt:
 				trace_print("jumpt R%d,%s[R%d]\n", d, adrsym, a);
 				if (emu->reg[d])
 					emu->pc = emu->adr + emu->reg[a];
 				break;
 			case 8: /* jal */
+			op_jal:
 				trace_print("jal R%d,%s[R%d]\n", d, adrsym, a);
 				emu->reg[d] = emu->pc;
 				emu->pc = emu->adr + emu->reg[a];
