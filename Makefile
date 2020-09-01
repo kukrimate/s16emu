@@ -1,7 +1,7 @@
 # Flags
 CFLAGS  := -std=c99 -Wall -D_GNU_SOURCE -DCOMPGOTO -Isrc/lib -g -O1
 LDFLAGS := -g
-LIBS    :=
+LIBS    := -lncurses
 
 # Shared
 LIB_OBJ := \
@@ -18,6 +18,8 @@ ASM_OBJ := \
 # Emulator
 EMU_OBJ := \
 	src/emu/alu.o \
+	src/emu/cpu.o \
+	src/emu/disasm.o \
 	src/emu/emu.o
 
 .PHONY: all

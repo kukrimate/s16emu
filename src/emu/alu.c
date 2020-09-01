@@ -1,9 +1,9 @@
 /*
- * Emulate two's complement arithmatic, relying only on C99 defined behaviour
+ * Two's complement arithmatic emulator
  */
 
 #include <stdint.h>
-#include "internal.h"
+#include "alu.h"
 
 #define S16_SIGN(x) (x & 0x8000)
 
@@ -86,7 +86,7 @@ void s16div(uint16_t *q, uint16_t *r, uint16_t a, uint16_t b)
 	if (!i_b) /* Zero division is just ignored */
 		return;
 
-	i_q	= i_a / i_b;
+	i_q = i_a / i_b;
 	if (i_q < 0 && i_a % i_b) /* Emulate floor division */
 		--i_q;
 

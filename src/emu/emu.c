@@ -1,268 +1,107 @@
+#include <ncurses.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-
+#include <signal.h>
 #include <unistd.h>
-
-#include "dynarr.h"
-#include "htab_ui16.h"
-
-#include "internal.h"
+#include <dynarr.h>
+#include <htab_ui16.h>
+#include "cpu.h"
+#include "disasm.h"
 
 dynarr_gen(char, c)
 
-/* Enable tracing */
-static _Bool dotrace = 0;
-
-static void trace_print(char *fmt, ...)
-{
-	va_list ap;
-
-	if (!dotrace)
-		return;
-	va_start(ap, fmt);
-	vprintf(fmt, ap);
-	va_end(ap);
-}
-
-/* Enable stupidly-simple "debugger" */
-static _Bool dodebug = 0;
-
 /*
- * Traps
+ * Add a single symbol to the table
  */
-
-#define TRAP_EXIT  0
-#define TRAP_READ  1
-#define TRAP_WRITE 2
-
-static void trap_read(struct s16emu *emu, uint16_t a, uint16_t b)
+static
+int
+addsym(char *line, htab_ui16 *symtab)
 {
-	if ((uint32_t) a + b > RAM_WORDS) {
-		fprintf(stderr, "WARN: out of bounds trap read detected!!\n");
-		return;
+	char *sym, *p;
+	uint16_t addr;
+
+	p = strchr(line, ':');
+
+	if (!p) {
+		fprintf(stderr, "Invalid symbol table entry %s\n", line);
+		return -1;
 	}
 
-	while (b--)
-		emu->ram[a++] = getchar();
-}
+	sym  = strndup(line, p - line);
+	addr = strtol(p+1, NULL, 10);
 
-static void trap_write(struct s16emu *emu, uint16_t a, uint16_t b)
-{
-	if ((uint32_t) a + b > RAM_WORDS) {
-		fprintf(stderr, "WARN: out of bounds trap write detected!!\n");
-		return;
-	}
-
-	while (b--)
-		printf("%c", (int) emu->ram[a++]);
+	htab_ui16_put(symtab, addr, sym, 1);
+	return 0;
 }
 
 /*
- * Execute instruction with debugging features
+ * Load symbol table into a hash-table in memory
  */
-void execute(struct s16emu *emu, htab_ui16 *symtab)
+static
+int
+load_symtab(char *path, htab_ui16 *symtab)
 {
-#ifdef COMPGOTO
-	static void *jmp_RRR[] = {
-		&&op_add, &&op_sub, &&op_mul, &&op_div, &&op_cmp, &&op_cmplt,
-		&&op_cmpeq, &&op_cmpgt, &&op_inv, &&op_and, &&op_or, &&op_xor,
-		&&op_addc, &&op_trap, &&op_exp, &&op_rx
-	};
+	FILE *file;
+	struct dynarrc line;
 
-	static void *jmp_RX[] = {
-		&&op_lea, &&op_load, &&op_store, &&op_jump, &&op_jumpc0,
-		&&op_jumpc1, &&op_jumpf, &&op_jumpt, &&op_jal
-	};
-#endif
+	ssize_t len;
+	char buf[4096], *p;
 
-	uint8_t op, d, a, b;
+	file = fopen(path, "rb");
+	if (!file) {
+		perror(path);
+		return -1;
+	}
 
-	char adrbuf[10];
-	char *adrsym = NULL; /* NOTE: unecessary assingment, but it shuts up gcc */
+	dynarrc_alloc(&line);
 
 	for (;;) {
-		trace_print("PC: %04x\t", emu->pc);
+		len = fread(buf, 1, sizeof(buf), file);
+		if (-1 == len) {
+			perror(path);
+			goto err_close;
+		}
 
-		emu->ir = emu->ram[emu->pc++];
-
-		op = INSN_OP(emu->ir);
-		d = INSN_RD(emu->ir);
-		a = INSN_RA(emu->ir);
-		b = INSN_RB(emu->ir);
-
-#ifdef COMPGOTO
-		goto *jmp_RRR[op];
-#endif
-
-		switch (op) {
-		case 0: /* add */
-		op_add:
-			trace_print("add R%d,R%d,R%d\n", d, a, b);
-			s16add(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
-			break;
-		case 1: /* sub */
-		op_sub:
-			trace_print("sub R%d,R%d,R%d\n", d, a, b);
-			s16sub(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
-			break;
-		case 2: /* mul */
-		op_mul:
-			trace_print("mul R%d,R%d,R%d\n", d, a, b);
-			s16mul(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
-			break;
-		case 3: /* div */
-		op_div:
-			trace_print("div R%d,R%d,R%d\n", d, a, b);
-			s16div(&emu->reg[d], &emu->reg[15], emu->reg[a], emu->reg[b]);
-			break;
-		case 4: /* cmp */
-		op_cmp:
-			trace_print("cmp R%d,R%d\n", a, b);
-			s16cmp(&emu->reg[15], emu->reg[a], emu->reg[b]);
-			break;
-		case 5: /* cmplt */
-		op_cmplt:
-			trace_print("cmplt R%d,R%d,R%d\n", d, a, b);
-			s16cmplt(&emu->reg[d], emu->reg[a], emu->reg[b]);
-			break;
-		case 6: /* cmpeq */
-		op_cmpeq:
-			trace_print("cmpeq R%d,R%d,R%d\n", d, a, b);
-			emu->reg[d] = emu->reg[a] == emu->reg[b];
-			break;
-		case 7: /* cmpgt */
-		op_cmpgt:
-			trace_print("cmpgt R%d,R%d,R%d\n", d, a, b);
-			s16cmpgt(&emu->reg[d], emu->reg[a], emu->reg[b]);
-			break;
-		case 8: /* inv */
-		op_inv:
-			trace_print("inv R%d,R%d\n", d, a);
-			emu->reg[d] = (uint16_t) ~emu->reg[a];
-			break;
-		case 9: /* and */
-		op_and:
-			trace_print("and R%d,R%d,R%d\n", d, a, b);
-			emu->reg[d] = emu->reg[a] & emu->reg[b];
-			break;
-		case 0xa: /* or */
-		op_or:
-			trace_print("or R%d,R%d,R%d\n", d, a, b);
-			emu->reg[d] = emu->reg[a] | emu->reg[b];
-			break;
-		case 0xb: /* xor */
-		op_xor:
-			trace_print("xor R%d,R%d,R%d\n", d, a, b);
-			emu->reg[d] = emu->reg[a] ^ emu->reg[b];
-			break;
-		case 0xc: /* addc */
-		op_addc:
-			trace_print("addc R%d,R%d,R%d\n", d, a, b);
-			s16addc(&emu->reg[15], &emu->reg[d], emu->reg[a], emu->reg[b]);
-			break;
-		case 0xd: /* trap */
-		op_trap:
-			trace_print("trap R%d,R%d,R%d\n", d, a, b);
-			switch (emu->reg[d]) {
-			case TRAP_EXIT:
-				return;
-			case TRAP_READ:
-				trap_read(emu, emu->reg[a], emu->reg[b]);
-				break;
-			case TRAP_WRITE:
-				trap_write(emu, emu->reg[a], emu->reg[b]);
-				break;
-			}
-			break;
-		case 0xe: /* EXP format, current unused */
-		op_exp:
-			break;
-		case 0xf: /* RX format */
-		op_rx:
-			emu->adr = emu->ram[emu->pc++];
-
-			if (dotrace && (!symtab || !(adrsym = htab_ui16_get(symtab, emu->adr)))) {
-				snprintf(adrbuf, sizeof(adrbuf), "%04x", emu->adr);
-				adrsym = adrbuf;
-			}
-#ifdef COMPGOTO
-			goto *jmp_RX[b];
-#endif
-
-			switch (b) {
-			case 0: /* lea */
-			op_lea:
-				trace_print("lea R%d,%s[R%d]\n", d, adrsym, a);
-				emu->reg[d] = emu->adr + emu->reg[a];
-				break;
-			case 1: /* load */
-			op_load:
-				trace_print("load R%d,%s[R%d]\n", d, adrsym, a);
-				emu->reg[d] = emu->ram[emu->adr + emu->reg[a]];
-				break;
-			case 2: /* store */
-			op_store:
-				trace_print("store R%d,%s[R%d]\n", d, adrsym, a);
-				emu->ram[emu->adr + emu->reg[a]] = emu->reg[d];
-				break;
-			case 3: /* jump */
-			op_jump:
-				trace_print("jump R%d,%s[R%d]\n", d, adrsym, a);
-				emu->pc = emu->adr + emu->reg[a];
-				break;
-			case 4: /* jumpc0 */
-			op_jumpc0:
-				trace_print("jumpc0 R%d,%s[R%d]\n", d, adrsym, a);
-				if (!GET_BIT(emu->reg[15], d))
-					emu->pc = emu->adr + emu->reg[a];
-				break;
-			case 5: /* jumpc1 */
-			op_jumpc1:
-				trace_print("jumpc1 R%d,%s[R%d]\n", d, adrsym, a);
-				if (GET_BIT(emu->reg[15], d))
-					emu->pc = emu->adr + emu->reg[a];
-				break;
-			case 6: /* jumpf */
-			op_jumpf:
-				trace_print("jumpf R%d,%s[R%d]\n", d, adrsym, a);
-				if (!emu->reg[d])
-					emu->pc = emu->adr +  emu->reg[a];
-				break;
-			case 7: /* jumpt */
-			op_jumpt:
-				trace_print("jumpt R%d,%s[R%d]\n", d, adrsym, a);
-				if (emu->reg[d])
-					emu->pc = emu->adr + emu->reg[a];
-				break;
-			case 8: /* jal */
-			op_jal:
-				trace_print("jal R%d,%s[R%d]\n", d, adrsym, a);
-				emu->reg[d] = emu->pc;
-				emu->pc = emu->adr + emu->reg[a];
-				break;
+		if (!len) {
+			if (line.nmemb > 0) {
+				dynarrc_add(&line, 0);
+				addsym(line.mem, symtab);
+				line.nmemb = 0;
 			}
 			break;
 		}
 
-		/* Enforce R0 = 0 */
-		emu->reg[0] = 0;
-
-		if (dodebug) {
-			for (size_t i = 0; i < REG_COUNT; ++i) {
-				trace_print("R%ld\t: %04x\n", i, emu->reg[i]);
+		for (p = buf; p < buf + len; ++p) {
+			if (*p == '\n') {
+				if (line.nmemb > 0) {
+					dynarrc_add(&line, 0);
+					addsym(line.mem, symtab);
+					line.nmemb = 0;
+				}
+			} else {
+				dynarrc_add(&line, *p);
 			}
-			getchar();
 		}
 	}
+
+	fclose(file);
+	dynarrc_free(&line);
+	return 0;
+err_close:
+	fclose(file);
+	dynarrc_free(&line);
+	return -1;
 }
 
 /*
  * Load program into RAM
  */
-ssize_t load(char *path, uint16_t *ram, size_t ram_words)
+static
+ssize_t
+load(char *path, uint16_t *ram, size_t ram_words)
 {
 	FILE *file;
 	uint16_t *ptr;
@@ -293,109 +132,139 @@ err:
 	return -1;
 }
 
-/*
- * Add a single symbol to the table
- */
-int addsym(char *line, htab_ui16 *symtab)
+struct winbox {
+	WINDOW *border, *content;
+};
+
+static
+void
+winbox_create(struct winbox *self, int height, int width, int y, int x)
 {
-	char *sym, *p;
-	uint16_t addr;
-
-	p = strchr(line, ':');
-
-	if (!p) {
-		fprintf(stderr, "Invalid symbol table entry %s\n", line);
-		return -1;
-	}
-
-	sym  = strndup(line, p - line);
-	addr = strtol(p+1, NULL, 10);
-
-	htab_ui16_put(symtab, addr, sym, 1);
-	return 0;
+	self->border = newwin(height, width, y, x);
+	box(self->border, 0, 0);
+	wrefresh(self->border);
+	self->content = newwin(height - 2, width - 2, y + 1, x + 1);
+	scrollok(self->content, 1);
+	wrefresh(self->content);
 }
 
-/*
- * Load symbol table into a hash-table in memory
- */
-int load_symtab(char *path, htab_ui16 *symtab)
+static
+void
+winbox_refresh(struct winbox *self)
 {
-	FILE *file;
-	struct dynarrc line;
+	wrefresh(self->border);
+	wrefresh(self->content);
+}
 
-	ssize_t len;
-	char buf[4096], *p;
+static
+void
+regs_refresh(struct winbox *regs, struct s16cpu *cpu)
+{
+	size_t reg_idx;
 
-	file = fopen(path, "rb");
-	if (!file) {
-		perror(path);
-		return -1;
-	}
+	wmove(regs->content, 0, 0);
+	wprintw(regs->content, "PC:\t%04x", cpu->pc);
+	wprintw(regs->content, "\nIR:\t%04x", cpu->ir);
+	wprintw(regs->content, "\nADR:\t%04x", cpu->adr);
+	for (reg_idx = 0; reg_idx < REG_COUNT; ++reg_idx)
+		wprintw(regs->content, "\nR%d:\t%04x",
+				reg_idx, cpu->reg[reg_idx]);
+	wrefresh(regs->content);
+}
 
-	dynarrc_alloc(&line);
-	htab_ui16_new(symtab, 32);
+static
+void
+execute_debug(struct s16cpu *cpu, htab_ui16 *symtab)
+{
+	int height, width;
+
+	struct winbox regs;
+
+	struct winbox disasm;
+	char disbuf[50];
+
+	size_t cmdline_height;
+	struct winbox cmdline;
+	char lastcmd[100], cmd[100];
+
+	initscr();
+	refresh();
+
+	getmaxyx(stdscr, height, width);
+	cmdline_height = height / 5;
+
+	winbox_create(&regs, height - cmdline_height, 15, 0, 0);
+	winbox_create(&disasm, height - cmdline_height, width - 16, 0, 16);
+	regs_refresh(&regs, cpu);
+	winbox_create(&cmdline, cmdline_height, width, height - cmdline_height, 0);
+	strcpy(lastcmd, "invalid");
 
 	for (;;) {
-		len = fread(buf, 1, sizeof(buf), file);
-		if (-1 == len)
-			goto err;
+		disassemble(disbuf, sizeof(disbuf), &cpu->ram[cpu->pc], symtab);
+		wprintw(disasm.content, "%04x: %s", cpu->pc, disbuf);
+		winbox_refresh(&disasm);
 
-		if (!len) {
-			if (line.nmemb > 0) {
-				dynarrc_add(&line, 0);
-				addsym(line.mem, symtab);
-				line.nmemb = 0;
-			}
+read_cmd:
+		wprintw(cmdline.content, "> ");
+		winbox_refresh(&cmdline);
+		wgetnstr(cmdline.content, cmd, sizeof(cmd));
+parse_cmd:
+		if (!strncmp("n", cmd, 1)) {
+			;
+		} else if (!strncmp("q", cmd, 1)) {
 			break;
+		} else if (!strcmp("", cmd)) {
+			memcpy(cmd, lastcmd, sizeof(cmd));
+			goto parse_cmd;
+		} else {
+			wprintw(cmdline.content, "?\n");
+			winbox_refresh(&cmdline);
+			goto read_cmd;
 		}
+		memcpy(lastcmd, cmd, sizeof(lastcmd));
 
-		for (p = buf; p < buf + len; ++p) {
-			if (*p == '\n') {
-				if (line.nmemb > 0) {
-					dynarrc_add(&line, 0);
-					addsym(line.mem, symtab);
-					line.nmemb = 0;
-				}
-			} else {
-				dynarrc_add(&line, *p);
-			}
-		}
+		if (!execute(cpu))
+			break;
+
+		regs_refresh(&regs, cpu);
+		wprintw(disasm.content, "\n");
 	}
 
-	fclose(file);
-	dynarrc_free(&line);
-	return 0;
-err:
-	perror(path);
-	fclose(file);
-	dynarrc_free(&line);
-	htab_ui16_del(symtab, 1);
-	return -1;
+	endwin();
 }
 
-int main(int argc, char *argv[])
+enum {
+	EXECUTE_FAST,
+	EXECUTE_TRACE,
+	EXECUTE_DEBUG
+};
+
+int
+main(int argc, char *argv[])
 {
-	int opt;
+	int opt, execute_type;
+
 	char *arg_sym;
-
-	struct s16emu *emu;
-	ssize_t prog_size;
-
 	htab_ui16 symtab;
 
+	struct s16cpu *cpu;
+	ssize_t prog_size;
+
+	char disbuf[50];
+
+	execute_type = EXECUTE_FAST;
 	arg_sym = NULL;
 
 	while (-1 != (opt = getopt(argc, argv, "htds:")))
 		switch (opt) {
-		case 's':
-			arg_sym = optarg;
-			break;
 		case 't':
-			dotrace = 1;
+			execute_type = EXECUTE_TRACE;
 			break;
 		case 'd':
-			dotrace = 1; /* -d implies -t */
-			dodebug = 1;
+			execute_type = EXECUTE_DEBUG;
+			break;
+		case 's':
+			arg_sym = optarg;
 			break;
 		case 'h':
 		default:
@@ -405,29 +274,44 @@ int main(int argc, char *argv[])
 	if (optind >= argc)
 		goto print_usage;
 
+	htab_ui16_new(&symtab, 32);
 	if (arg_sym && -1 == load_symtab(arg_sym, &symtab)) {
+		htab_ui16_del(&symtab, 1);
 		return 1;
 	}
 
-	emu = calloc(1, sizeof(struct s16emu));
-	if (!emu) /* We can't do much if malloc fails */
+	if (!(cpu = calloc(1, sizeof(struct s16cpu))))
 		abort();
 
-	prog_size = load(argv[optind], emu->ram, RAM_WORDS);
+	prog_size = load(argv[optind], cpu->ram, RAM_WORDS);
 	if (-1 == prog_size) {
-		free(emu);
+		htab_ui16_del(&symtab, 1);
+		free(cpu);
 		return 1;
 	}
-	printf("Loaded %u word program!\n", (unsigned) prog_size);
 
-	execute(emu, arg_sym ? &symtab : NULL);
+	switch (execute_type) {
+	case EXECUTE_FAST:
+		while (execute(cpu))
+			;
+		break;
+	case EXECUTE_TRACE:
+		do {
+			disassemble(disbuf, sizeof(disbuf),
+				&cpu->ram[cpu->pc], &symtab);
+			printf("%s\n", disbuf);
+		} while (execute(cpu));
+		break;
+	case EXECUTE_DEBUG:
+		execute_debug(cpu, &symtab);
+		break;
+	}
 
-	if (arg_sym)
-		htab_ui16_del(&symtab, 1);
-	free(emu);
+	htab_ui16_del(&symtab, 1);
+	free(cpu);
 	return 0;
 
 print_usage:
-	fprintf(stderr, "Usage: %s [-h] [-t] [-d] [-s SYM] BIN\n", argv[0]);
+	fprintf(stderr, "Usage: %s [-h] [-t | -d] [-s SYM] BIN\n", argv[0]);
 	return 1;
 }
