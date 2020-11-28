@@ -7,10 +7,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include "dynarr.h"
+#include <vec.h>
 #include "lexer.h"
 
-dynarr_gen(char, c)
+vec_gen(char, c)
 
 /* NOTE: start with the longest for greedy matching */
 static char *regs[] = {
@@ -213,31 +213,31 @@ static int getcharacter(char *str, char **endptr)
 
 static char *getstrliteral(char *str, char **endptr)
 {
-	struct dynarrc tmp;
+	struct cvec tmp;
 	int ch;
 
 	if ('"' != *str++)
 		return NULL;
 
-	dynarrc_alloc(&tmp);
+	cvec_init(&tmp);
 
 	while (*str && *str != '"') {
 		ch = getcharacter(str, &str);
 		if (-1 == ch)
 			break;
-		dynarrc_add(&tmp, ch);
+		cvec_add(&tmp, ch);
 	}
 
 	if ('"' != *str++) {
-		dynarrc_free(&tmp);
+		cvec_free(&tmp);
 		return NULL;
 	}
 
 	if (endptr)
 		*endptr = str;
 
-	dynarrc_add(&tmp, 0); /* NUL-terminate buffer */
-	return tmp.mem;
+	cvec_add(&tmp, 0); /* NUL-terminate buffer */
+	return tmp.arr;
 }
 
 static void append_token(

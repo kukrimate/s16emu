@@ -6,19 +6,19 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
-#include <dynarr.h>
-#include <htab_ui16.h>
+#include <vec.h>
+#include <map.h>
 #include "cpu.h"
 #include "disasm.h"
 
-dynarr_gen(char, c)
+vec_gen(char, c)
 
 /*
  * Add a single symbol to the table
  */
 static
 int
-addsym(char *line, htab_ui16 *symtab)
+addsym(char *line, struct rsymmap *rsymtab)
 {
 	char *sym, *p;
 	uint16_t addr;
@@ -33,7 +33,7 @@ addsym(char *line, htab_ui16 *symtab)
 	sym  = strndup(line, p - line);
 	addr = strtol(p+1, NULL, 10);
 
-	htab_ui16_put(symtab, addr, sym, 1);
+	rsymmap_put(rsymtab, addr, sym);
 	return 0;
 }
 
@@ -42,10 +42,10 @@ addsym(char *line, htab_ui16 *symtab)
  */
 static
 int
-load_symtab(char *path, htab_ui16 *symtab)
+load_symtab(char *path, struct rsymmap *rsymtab)
 {
 	FILE *file;
-	struct dynarrc line;
+	struct cvec line;
 
 	ssize_t len;
 	char buf[4096], *p;
@@ -56,7 +56,7 @@ load_symtab(char *path, htab_ui16 *symtab)
 		return -1;
 	}
 
-	dynarrc_alloc(&line);
+	cvec_init(&line);
 
 	for (;;) {
 		len = fread(buf, 1, sizeof(buf), file);
@@ -66,33 +66,33 @@ load_symtab(char *path, htab_ui16 *symtab)
 		}
 
 		if (!len) {
-			if (line.nmemb > 0) {
-				dynarrc_add(&line, 0);
-				addsym(line.mem, symtab);
-				line.nmemb = 0;
+			if (line.n > 0) {
+				cvec_add(&line, 0);
+				addsym(line.arr, rsymtab);
+				line.n = 0;
 			}
 			break;
 		}
 
 		for (p = buf; p < buf + len; ++p) {
 			if (*p == '\n') {
-				if (line.nmemb > 0) {
-					dynarrc_add(&line, 0);
-					addsym(line.mem, symtab);
-					line.nmemb = 0;
+				if (line.n > 0) {
+					cvec_add(&line, 0);
+					addsym(line.arr, rsymtab);
+					line.n = 0;
 				}
 			} else {
-				dynarrc_add(&line, *p);
+				cvec_add(&line, *p);
 			}
 		}
 	}
 
 	fclose(file);
-	dynarrc_free(&line);
+	cvec_free(&line);
 	return 0;
 err_close:
 	fclose(file);
-	dynarrc_free(&line);
+	cvec_free(&line);
 	return -1;
 }
 
@@ -114,7 +114,7 @@ load(char *path, uint16_t *ram, size_t ram_words)
 	}
 
 	ptr = ram;
-	while (0 < fread(buf, 1, sizeof(buf), file)) {
+	while (fread(buf, 1, sizeof(buf), file) > 0) {
 		/* Make sure the program actually fits into RAM */
 		if (ptr >= ram + ram_words) {
 			fprintf(stderr, "Program too big!\n");
@@ -174,7 +174,7 @@ regs_refresh(struct winbox *regs, struct s16cpu *cpu)
 
 static
 void
-execute_debug(struct s16cpu *cpu, htab_ui16 *symtab)
+execute_debug(struct s16cpu *cpu, struct rsymmap *symtab)
 {
 	int height, width;
 
@@ -245,7 +245,7 @@ main(int argc, char *argv[])
 	int opt, execute_type;
 
 	char *arg_sym;
-	htab_ui16 symtab;
+	struct rsymmap rsymtab;
 
 	struct s16cpu *cpu;
 	ssize_t prog_size;
@@ -274,9 +274,9 @@ main(int argc, char *argv[])
 	if (optind >= argc)
 		goto print_usage;
 
-	htab_ui16_new(&symtab, 32);
-	if (arg_sym && -1 == load_symtab(arg_sym, &symtab)) {
-		htab_ui16_del(&symtab, 1);
+	rsymmap_init(&rsymtab);
+	if (arg_sym && -1 == load_symtab(arg_sym, &rsymtab)) {
+		rsymmap_free(&rsymtab);
 		return 1;
 	}
 
@@ -285,7 +285,7 @@ main(int argc, char *argv[])
 
 	prog_size = load(argv[optind], cpu->ram, RAM_WORDS);
 	if (-1 == prog_size) {
-		htab_ui16_del(&symtab, 1);
+		rsymmap_free(&rsymtab);
 		free(cpu);
 		return 1;
 	}
@@ -298,16 +298,16 @@ main(int argc, char *argv[])
 	case EXECUTE_TRACE:
 		do {
 			disassemble(disbuf, sizeof(disbuf),
-				&cpu->ram[cpu->pc], &symtab);
+				&cpu->ram[cpu->pc], &rsymtab);
 			printf("%s\n", disbuf);
 		} while (execute(cpu));
 		break;
 	case EXECUTE_DEBUG:
-		execute_debug(cpu, &symtab);
+		execute_debug(cpu, &rsymtab);
 		break;
 	}
 
-	htab_ui16_del(&symtab, 1);
+	rsymmap_free(&rsymtab);
 	free(cpu);
 	return 0;
 

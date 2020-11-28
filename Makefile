@@ -1,12 +1,10 @@
 # Flags
-CFLAGS  := -std=c99 -Wall -D_GNU_SOURCE -DCOMPGOTO -Isrc/lib -g -O1
+CFLAGS  := -std=c99 -Wall -D_GNU_SOURCE -DCOMPGOTO -Ilibkm -g -O1
 LDFLAGS := -g
 LIBS    := -lncurses
 
 # Shared
-LIB_OBJ := \
-	src/lib/htab.o \
-	src/lib/htab_ui16.o
+LIB_OBJ :=
 
 # Assembler
 ASM_OBJ := \

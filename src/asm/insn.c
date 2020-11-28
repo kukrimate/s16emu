@@ -6,28 +6,27 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <unistd.h>
-
-#include "dynarr.h"
-#include "htab.h"
-
+#include <vec.h>
+#include <map.h>
+#include <djb2.h>
 #include "lexer.h"
 #include "parser.h"
 
-dynarr_gen(uint16_t, w)
+vec_gen(uint16_t, w)
+map_gen(char *, uint16_t, djb2_hash, !strcmp, sym)
 
 static int assemble_const
-	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
+	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
 {
 	uint16_t *p;
 
-	p = dynarrw_ptr(buf, buf->nmemb - 1);
+	p = buf->arr + buf->n - 1;
 
 	if (OPERAND_CONSTANT == ptok->type) {
 		*p = (uint16_t) ptok->data.l;
 	} else if (OPERAND_LABEL == ptok->type) {
-		*p = htab_get(symtab, ptok->data.s);
+		*p = symmap_get(symtab, ptok->data.s);
 		if (!*p) {
 			fprintf(stderr, "Undefined label %s\n",  ptok->data.s);
 			return -1;
@@ -41,7 +40,7 @@ static int assemble_const
 }
 
 static int assemble_d
-	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
+	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
 {
 	uint16_t *p;
 
@@ -50,13 +49,13 @@ static int assemble_d
 		return -1;
 	}
 
-	p = dynarrw_ptr(buf, buf->nmemb - 1);
+	p = buf->arr + buf->n - 1;
 	*p |= (uint16_t) ptok->data.l << 8;
 	return 0;
 }
 
 static int assemble_a
-	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
+	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
 {
 	uint16_t *p;
 
@@ -65,13 +64,13 @@ static int assemble_a
 		return -1;
 	}
 
-	p = dynarrw_ptr(buf, buf->nmemb - 1);
+	p = buf->arr + buf->n - 1;
 	*p |= (uint16_t) ptok->data.l << 4;
 	return 0;
 }
 
 static int assemble_b
-	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
+	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
 {
 	uint16_t *p;
 
@@ -80,13 +79,13 @@ static int assemble_b
 		return -1;
 	}
 
-	p = dynarrw_ptr(buf, buf->nmemb - 1);
+	p = buf->arr + buf->n - 1;
 	*p |= (uint16_t) ptok->data.l;
 	return 0;
 }
 
 static int assemble_ea
-	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
+	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
 {
 	if (OPERAND_EADDRESS != ptok->type) {
 		fprintf(stderr, "Invalid effective address\n");
@@ -95,12 +94,12 @@ static int assemble_ea
 
 	if (-1 == assemble_a(ptok->children[1], symtab, buf))
 		return -1;
-	dynarrw_add(buf, 0); /* NOTE: add 0 to avoid windback for displacement */
+	wvec_add(buf, 0); /* NOTE: add 0 to avoid windback for displacement */
 	return assemble_const(ptok->children[0], symtab, buf);
 }
 
 static int assemble_ascii
-	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf)
+	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
 {
 	char *str;
 
@@ -110,16 +109,16 @@ static int assemble_ascii
 	}
 
 	/* NOTE: get rid of non-existent opcode the assembler wrote */
-	buf->nmemb -= 1;
+	buf->n -= 1;
 	for (str = ptok->data.s; *str; ++str)
-		dynarrw_add(buf, *str);
-	dynarrw_add(buf, 0);
+		wvec_add(buf, *str);
+	wvec_add(buf, 0);
 
 	return 0;
 }
 
 typedef int (*s16_operand)
-	(struct s16_parse_token *ptok, htab *symtab, struct dynarrw *buf);
+	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf);
 
 struct s16_opdef {
 	char *mnemonic;
@@ -191,21 +190,21 @@ static struct s16_opdef *lookup(char *opcode)
 void assemble(struct s16_parse_token *root, int outfd)
 {
 	uint16_t address;
-	htab labels;
-	struct dynarrw code;
+	struct symmap labels;
+	struct wvec code;
 	size_t i, j;
 	struct s16_opdef *opdef;
 	uint8_t tmp;
 
 	address = 0;
-	htab_new(&labels, 32);
-	dynarrw_alloc(&code);
+	symmap_init(&labels);
+	wvec_init(&code);
 
 	/* First stage */
 	for (i = 0; i < root->child_cnt; ++i)
 		switch (root->children[i]->type) {
 		case LABEL:
-			htab_put(&labels, root->children[i]->data.s, address, 0);
+			symmap_put(&labels, root->children[i]->data.s, address);
 			break;
 		case OPCODE:
 			opdef = lookup(root->children[i]->data.s);
@@ -232,7 +231,7 @@ void assemble(struct s16_parse_token *root, int outfd)
 				goto done;
 			}
 
-			dynarrw_add(&code, opdef->opcode);
+			wvec_add(&code, opdef->opcode);
 
 			for (j = 0; j < opdef->operand_cnt; ++j) {
 				if (-1 == opdef->operands[j]
@@ -242,14 +241,14 @@ void assemble(struct s16_parse_token *root, int outfd)
 		}
 
 	/* Convert to big-endian and write to output */
-	for (i = 0; i < code.nmemb; ++i) {
-		tmp = dynarrw_get(&code, i) >> 8;
+	for (i = 0; i < code.n; ++i) {
+		tmp = code.arr[i] >> 8;
 		write(outfd, &tmp, 1);
-		tmp = dynarrw_get(&code, i);
+		tmp = code.arr[i];
 		write(outfd, &tmp, 1);
 	}
 
 done:
-	htab_del(&labels, 0);
-	dynarrw_free(&code);
+	symmap_free(&labels);
+	wvec_free(&code);
 }

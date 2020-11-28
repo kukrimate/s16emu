@@ -3,8 +3,10 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
-#include <htab_ui16.h>
+#include <map.h>
+#include "disasm.h"
 
 #define INSN_OP(insn) (insn >> 12 & 0xf)
 #define INSN_RD(insn) (insn >> 8 & 0xf)
@@ -12,7 +14,7 @@
 #define INSN_RB(insn) (insn & 0xf)
 
 uint16_t *
-disassemble(char *str, size_t size, uint16_t *mem, htab_ui16 *symtab)
+disassemble(char *str, size_t size, uint16_t *mem, struct rsymmap *rsymtab)
 {
 	uint8_t op, d, a, b;
 
@@ -71,7 +73,7 @@ disassemble(char *str, size_t size, uint16_t *mem, htab_ui16 *symtab)
 		break;
 	case 0xf: /* RX format */
 		++mem;
-		if (!symtab || !(adrsym = htab_ui16_get(symtab, *mem))) {
+		if (!rsymtab || !(adrsym = rsymmap_get(rsymtab, *mem))) {
 			snprintf(adrbuf, sizeof(adrbuf), "%04x", *mem);
 			adrsym = adrbuf;
 		}
