@@ -1,4 +1,5 @@
 *.o
 s16asm
+s16dbg
 s16emu
 prog

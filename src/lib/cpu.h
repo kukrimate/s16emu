@@ -20,5 +20,10 @@ struct s16cpu {
 int
 execute(struct s16cpu *cpu);
 
+/*
+ * Load program into RAM
+ */
+ssize_t
+load_program(const char *path, struct s16cpu *cpu);
 
 #endif

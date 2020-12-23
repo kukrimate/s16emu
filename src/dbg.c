@@ -1,24 +1,24 @@
-#include <ncurses.h>
+/*
+ * Debugger
+ */
+
 #include <stdio.h>
-#include <stdarg.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
-#include <signal.h>
-#include <unistd.h>
+#include <getopt.h>
+#include <ncurses.h>
 #include <vec.h>
 #include <map.h>
-#include "cpu.h"
-#include "disasm.h"
+#include "lib/cpu.h"
+#include "lib/disasm.h"
 
 vec_gen(char, c)
 
 /*
  * Add a single symbol to the table
  */
-static
-int
-addsym(char *line, struct rsymmap *rsymtab)
+static int
+addsym(const char *line, struct rsymmap *rsymtab)
 {
 	char *sym, *p;
 	uint16_t addr;
@@ -40,9 +40,8 @@ addsym(char *line, struct rsymmap *rsymtab)
 /*
  * Load symbol table into a hash-table in memory
  */
-static
-int
-load_symtab(char *path, struct rsymmap *rsymtab)
+static int
+load_symtab(const char *path, struct rsymmap *rsymtab)
 {
 	FILE *file;
 	struct cvec line;
@@ -93,42 +92,6 @@ load_symtab(char *path, struct rsymmap *rsymtab)
 err_close:
 	fclose(file);
 	cvec_free(&line);
-	return -1;
-}
-
-/*
- * Load program into RAM
- */
-static
-ssize_t
-load(char *path, uint16_t *ram, size_t ram_words)
-{
-	FILE *file;
-	uint16_t *ptr;
-	uint8_t buf[2];
-
-	file = fopen(path, "rb");
-	if (!file) {
-		perror(path);
-		return -1;
-	}
-
-	ptr = ram;
-	while (fread(buf, 1, sizeof(buf), file) > 0) {
-		/* Make sure the program actually fits into RAM */
-		if (ptr >= ram + ram_words) {
-			fprintf(stderr, "Program too big!\n");
-			goto err;
-		}
-
-		/* Load big endian words from the file in native endianness */
-		*ptr++ = buf[0] << 8 | buf[1];
-	}
-
-	fclose(file);
-	return ptr - ram;
-err:
-	fclose(file);
 	return -1;
 }
 
@@ -233,38 +196,19 @@ parse_cmd:
 	endwin();
 }
 
-enum {
-	EXECUTE_FAST,
-	EXECUTE_TRACE,
-	EXECUTE_DEBUG
-};
-
 int
 main(int argc, char *argv[])
 {
-	int opt, execute_type;
-
-	char *arg_sym;
+	int opt;
+	const char *symtab_path = NULL, *prog_path;
+	struct s16cpu cpu;
 	struct rsymmap rsymtab;
 
-	struct s16cpu *cpu;
-	ssize_t prog_size;
-
-	char disbuf[50];
-
-	execute_type = EXECUTE_FAST;
-	arg_sym = NULL;
-
-	while (-1 != (opt = getopt(argc, argv, "htds:")))
+	/* Parse command line */
+	while ((opt = getopt(argc, argv, "hs:")) != -1)
 		switch (opt) {
-		case 't':
-			execute_type = EXECUTE_TRACE;
-			break;
-		case 'd':
-			execute_type = EXECUTE_DEBUG;
-			break;
 		case 's':
-			arg_sym = optarg;
+			symtab_path = optarg;
 			break;
 		case 'h':
 		default:
@@ -273,45 +217,32 @@ main(int argc, char *argv[])
 
 	if (optind >= argc)
 		goto print_usage;
+	prog_path = argv[optind];
 
+	/* Make sure all registers and RAM is zeroed */
+	memset(&cpu, 0, sizeof cpu);
+	/* Initialize symbol table */
 	rsymmap_init(&rsymtab);
-	if (arg_sym && -1 == load_symtab(arg_sym, &rsymtab)) {
-		rsymmap_free(&rsymtab);
+
+	/* Load program into the CPU's RAM */
+	if (load_program(prog_path, &cpu) < 0) {
+		perror(prog_path);
 		return 1;
 	}
+	printf("Program binary: %s\n", prog_path);
 
-	if (!(cpu = calloc(1, sizeof(struct s16cpu))))
-		abort();
+	/* Load symbol table if specified */
+	if (symtab_path && load_symtab(symtab_path, &rsymtab) < 0)
+		perror(symtab_path);
 
-	prog_size = load(argv[optind], cpu->ram, RAM_WORDS);
-	if (-1 == prog_size) {
-		rsymmap_free(&rsymtab);
-		free(cpu);
-		return 1;
-	}
+	/* Start debugger */
+	execute_debug(&cpu, &rsymtab);
 
-	switch (execute_type) {
-	case EXECUTE_FAST:
-		while (execute(cpu))
-			;
-		break;
-	case EXECUTE_TRACE:
-		do {
-			disassemble(disbuf, sizeof(disbuf),
-				&cpu->ram[cpu->pc], &rsymtab);
-			printf("%s\n", disbuf);
-		} while (execute(cpu));
-		break;
-	case EXECUTE_DEBUG:
-		execute_debug(cpu, &rsymtab);
-		break;
-	}
-
+	/* Free symbol table and exit */
 	rsymmap_free(&rsymtab);
-	free(cpu);
 	return 0;
 
 print_usage:
-	fprintf(stderr, "Usage: %s [-h] [-t | -d] [-s SYM] BIN\n", argv[0]);
+	fprintf(stderr, "Usage: %s [-s SYMTAB] PROG\n", argv[0]);
 	return 1;
 }

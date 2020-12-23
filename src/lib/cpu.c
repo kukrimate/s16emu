@@ -201,3 +201,35 @@ execute(struct s16cpu *cpu)
 
 	return 1;
 }
+
+ssize_t
+load_program(const char *path, struct s16cpu *cpu)
+{
+	FILE *file;
+	uint16_t *ptr;
+	uint8_t buf[2];
+
+	file = fopen(path, "rb");
+	if (!file) {
+		perror(path);
+		return -1;
+	}
+
+	ptr = cpu->ram;
+	while (fread(buf, 1, sizeof(buf), file) > 0) {
+		/* Make sure the program actually fits into RAM */
+		if (ptr >= cpu->ram + RAM_WORDS) {
+			fprintf(stderr, "Program too big!\n");
+			goto err;
+		}
+
+		/* Load big endian words from the file in native endianness */
+		*ptr++ = buf[0] << 8 | buf[1];
+	}
+
+	fclose(file);
+	return ptr - cpu->ram;
+err:
+	fclose(file);
+	return -1;
+}
