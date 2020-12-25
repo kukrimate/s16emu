@@ -38,7 +38,7 @@ trap_write(struct s16cpu *cpu, uint16_t a, uint16_t b)
 	}
 
 	while (b--)
-		printf("%c", (int) cpu->ram[a++]);
+		putchar(cpu->ram[a++]);
 }
 
 /*
