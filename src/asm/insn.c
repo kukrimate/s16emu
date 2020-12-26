@@ -227,7 +227,7 @@ void assemble(struct s16_parse_token *root, int outfd)
 					goto done;
 				}
 
-				address += strlen(operand->data.s);
+				address += strlen(operand->data.s) + 1; // +1 for NUL
 			} else {
 				address += opdef->length;
 			}
