@@ -1,6 +1,6 @@
 # Flags
-CFLAGS  := -std=c99 -Wall -D_GNU_SOURCE -DCOMPGOTO -Ilibkm -g -O1
-LDFLAGS := -g
+CFLAGS  := -std=c99 -Wall -D_GNU_SOURCE -Ilibkm -O1
+LDFLAGS :=
 LIBS    := -lncurses
 
 # Assembler
@@ -9,6 +9,11 @@ ASM_OBJ := \
 	src/asm/parser.o \
 	src/asm/insn.o \
 	src/asm/main.o
+
+# Disassembler
+DIS_OBJ := \
+	src/lib/disasm.o \
+	src/dis.o
 
 # Debugger
 DBG_OBJ := \
@@ -24,10 +29,14 @@ EMU_OBJ := \
 	src/lib/disasm.o \
 	src/emu.o
 
+# Programs
 .PHONY: all
-all: s16asm s16dbg s16emu
+all: s16asm s16dis s16dbg s16emu
 
 s16asm: $(ASM_OBJ)
+	$(CC) $(LDFLAGS) $^ -o $@ $(LIBS)
+
+s16dis: $(DIS_OBJ)
 	$(CC) $(LDFLAGS) $^ -o $@ $(LIBS)
 
 s16dbg: $(DBG_OBJ)
@@ -41,4 +50,4 @@ s16emu: $(EMU_OBJ)
 
 .PHONY: clean
 clean:
-	rm -f $(ASM_OBJ) $(DBG_OBJ) $(EMU_OBJ) s16emu s16dbg s16asm
+	rm -f $(ASM_OBJ) $(DIS_OBJ) $(DBG_OBJ) $(EMU_OBJ) s16emu s16dis s16dbg s16asm

@@ -1,5 +1,5 @@
 /*
- * Disassembler
+ * Disassembler library
  */
 
 #include <stdio.h>

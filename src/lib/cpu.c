@@ -216,7 +216,7 @@ load_program(const char *path, struct s16cpu *cpu)
 	}
 
 	ptr = cpu->ram;
-	while (fread(buf, 1, sizeof(buf), file) > 0) {
+	while (fread(buf, sizeof buf, 1, file) > 0) {
 		/* Make sure the program actually fits into RAM */
 		if (ptr >= cpu->ram + RAM_WORDS) {
 			fprintf(stderr, "Program too big!\n");

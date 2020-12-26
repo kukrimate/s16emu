@@ -175,7 +175,7 @@ static struct s16_opdef opdefs[] = {
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))
 
-static struct s16_opdef *lookup(char *opcode)
+static struct s16_opdef *lookup(const char *opcode)
 {
 	size_t i;
 
@@ -206,14 +206,32 @@ void assemble(struct s16_parse_token *root, int outfd)
 		case LABEL:
 			symmap_put(&labels, root->children[i]->data.s, address);
 			break;
-		case OPCODE:
-			opdef = lookup(root->children[i]->data.s);
+		case OPCODE:;
+			const char *opcode = root->children[i]->data.s;
+
+			opdef = lookup(opcode);
 			if (!opdef) {
 				fprintf(stderr,
-					"Unkonwn instruction %s\n", root->children[i]->data.s);
+					"Unkonwn instruction %s\n", opcode);
 				goto done;
 			}
-			address += opdef->length;
+
+			/* Special length handling for string literals */
+			if (!strcmp(opcode, "ascii")) {
+				struct s16_parse_token *operand;
+
+				if (root->children[i]->child_cnt < 1 ||
+						(operand = root->children[i]->children[0])->type
+						!= OPERAND_STRING_LITERAL) {
+					fprintf(stderr, "Invalid string literal!\n");
+					goto done;
+				}
+
+				address += strlen(operand->data.s);
+			} else {
+				address += opdef->length;
+			}
+
 			break;
 		default:
 			break;
