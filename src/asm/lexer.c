@@ -10,7 +10,7 @@
 #include <vec.h>
 #include "lexer.h"
 
-vec_gen(char, c)
+VEC_GEN(char, c)
 
 /* NOTE: start with the longest for greedy matching */
 static char *regs[] = {
@@ -213,7 +213,7 @@ static int getcharacter(char *str, char **endptr)
 
 static char *getstrliteral(char *str, char **endptr)
 {
-	struct cvec tmp;
+	cvec tmp;
 	int ch;
 
 	if ('"' != *str++)

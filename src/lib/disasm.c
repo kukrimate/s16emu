@@ -14,7 +14,7 @@
 #define INSN_RB(insn) (insn & 0xf)
 
 uint16_t *
-disassemble(char *str, size_t size, uint16_t *mem, struct rsymmap *rsymtab)
+disassemble(char *str, size_t size, uint16_t *mem, rsymmap *rsymtab)
 {
 	uint8_t op, d, a, b;
 
@@ -73,7 +73,7 @@ disassemble(char *str, size_t size, uint16_t *mem, struct rsymmap *rsymtab)
 		break;
 	case 0xf: /* RX format */
 		++mem;
-		if (!rsymtab || !(adrsym = rsymmap_get(rsymtab, *mem))) {
+		if (!rsymtab || !rsymmap_get(rsymtab, *mem, &adrsym)) {
 			snprintf(adrbuf, sizeof(adrbuf), "%04x", *mem);
 			adrsym = adrbuf;
 		}

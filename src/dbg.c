@@ -12,13 +12,13 @@
 #include "lib/cpu.h"
 #include "lib/disasm.h"
 
-vec_gen(char, c)
+VEC_GEN(char, c)
 
 /*
  * Add a single symbol to the table
  */
 static int
-addsym(const char *line, struct rsymmap *rsymtab)
+addsym(const char *line, rsymmap *rsymtab)
 {
 	char *sym, *p;
 	uint16_t addr;
@@ -41,10 +41,10 @@ addsym(const char *line, struct rsymmap *rsymtab)
  * Load symbol table into a hash-table in memory
  */
 static int
-load_symtab(const char *path, struct rsymmap *rsymtab)
+load_symtab(const char *path, rsymmap *rsymtab)
 {
 	FILE *file;
-	struct cvec line;
+	cvec line;
 
 	ssize_t len;
 	char buf[4096], *p;
@@ -121,7 +121,7 @@ winbox_refresh(struct winbox *self)
 
 static
 void
-regs_refresh(struct winbox *regs, struct s16cpu *cpu)
+regs_refresh(struct winbox *regs, s16cpu *cpu)
 {
 	size_t reg_idx;
 
@@ -137,7 +137,7 @@ regs_refresh(struct winbox *regs, struct s16cpu *cpu)
 
 static
 void
-execute_debug(struct s16cpu *cpu, struct rsymmap *symtab)
+execute_debug(s16cpu *cpu, rsymmap *symtab)
 {
 	int height, width;
 
@@ -201,8 +201,8 @@ main(int argc, char *argv[])
 {
 	int opt;
 	const char *symtab_path = NULL, *prog_path;
-	struct s16cpu cpu;
-	struct rsymmap rsymtab;
+	s16cpu cpu;
+	rsymmap rsymtab;
 
 	/* Parse command line */
 	while ((opt = getopt(argc, argv, "hs:")) != -1)

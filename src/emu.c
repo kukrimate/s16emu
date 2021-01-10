@@ -10,7 +10,7 @@
 int
 main(int argc, char *argv[])
 {
-	struct s16cpu cpu;
+	s16cpu cpu;
 	ssize_t prog_size;
 
 	if (argc < 2)

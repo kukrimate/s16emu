@@ -17,7 +17,7 @@
 
 static
 void
-trap_read(struct s16cpu *cpu, uint16_t a, uint16_t b)
+trap_read(s16cpu *cpu, uint16_t a, uint16_t b)
 {
 	if (a + b > RAM_WORDS) {
 		fprintf(stderr, "WARN: out of bounds trap read detected!!\n");
@@ -30,7 +30,7 @@ trap_read(struct s16cpu *cpu, uint16_t a, uint16_t b)
 
 static
 void
-trap_write(struct s16cpu *cpu, uint16_t a, uint16_t b)
+trap_write(s16cpu *cpu, uint16_t a, uint16_t b)
 {
 	if (a + b > RAM_WORDS) {
 		fprintf(stderr, "WARN: out of bounds trap write detected!!\n");
@@ -51,7 +51,7 @@ trap_write(struct s16cpu *cpu, uint16_t a, uint16_t b)
 #define INSN_RB(insn) (insn & 0xf)
 
 int
-execute(struct s16cpu *cpu)
+execute(s16cpu *cpu)
 {
 	static void *jmp_RRR[] = {
 		&&op_add, &&op_sub, &&op_mul, &&op_div, &&op_cmp, &&op_cmplt,
@@ -203,7 +203,7 @@ execute(struct s16cpu *cpu)
 }
 
 ssize_t
-load_program(const char *path, struct s16cpu *cpu)
+load_program(const char *path, s16cpu *cpu)
 {
 	FILE *file;
 	uint16_t *ptr;

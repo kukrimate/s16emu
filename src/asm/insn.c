@@ -13,11 +13,11 @@
 #include "lexer.h"
 #include "parser.h"
 
-vec_gen(uint16_t, w)
-map_gen(char *, uint16_t, djb2_hash, !strcmp, sym)
+VEC_GEN(uint16_t, w)
+MAP_GEN(char *, uint16_t, djb2_hash, !strcmp, sym)
 
 static int assemble_const
-	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
+	(struct s16_parse_token *ptok, symmap *symtab, wvec *buf)
 {
 	uint16_t *p;
 
@@ -26,8 +26,7 @@ static int assemble_const
 	if (OPERAND_CONSTANT == ptok->type) {
 		*p = (uint16_t) ptok->data.l;
 	} else if (OPERAND_LABEL == ptok->type) {
-		*p = symmap_get(symtab, ptok->data.s);
-		if (!*p) {
+		if (!symmap_get(symtab, ptok->data.s, p)) {
 			fprintf(stderr, "Undefined label %s\n",  ptok->data.s);
 			return -1;
 		}
@@ -40,7 +39,7 @@ static int assemble_const
 }
 
 static int assemble_d
-	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
+	(struct s16_parse_token *ptok, symmap *symtab, wvec *buf)
 {
 	uint16_t *p;
 
@@ -55,7 +54,7 @@ static int assemble_d
 }
 
 static int assemble_a
-	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
+	(struct s16_parse_token *ptok, symmap *symtab, wvec *buf)
 {
 	uint16_t *p;
 
@@ -70,7 +69,7 @@ static int assemble_a
 }
 
 static int assemble_b
-	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
+	(struct s16_parse_token *ptok, symmap *symtab, wvec *buf)
 {
 	uint16_t *p;
 
@@ -85,7 +84,7 @@ static int assemble_b
 }
 
 static int assemble_ea
-	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
+	(struct s16_parse_token *ptok, symmap *symtab, wvec *buf)
 {
 	if (OPERAND_EADDRESS != ptok->type) {
 		fprintf(stderr, "Invalid effective address\n");
@@ -99,7 +98,7 @@ static int assemble_ea
 }
 
 static int assemble_ascii
-	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf)
+	(struct s16_parse_token *ptok, symmap *symtab, wvec *buf)
 {
 	char *str;
 
@@ -118,7 +117,7 @@ static int assemble_ascii
 }
 
 typedef int (*s16_operand)
-	(struct s16_parse_token *ptok, struct symmap *symtab, struct wvec *buf);
+	(struct s16_parse_token *ptok, symmap *symtab, wvec *buf);
 
 struct s16_opdef {
 	char *mnemonic;
@@ -190,8 +189,8 @@ static struct s16_opdef *lookup(const char *opcode)
 void assemble(struct s16_parse_token *root, int outfd)
 {
 	uint16_t address;
-	struct symmap labels;
-	struct wvec code;
+	symmap labels;
+	wvec code;
 	size_t i, j;
 	struct s16_opdef *opdef;
 	uint8_t tmp;
